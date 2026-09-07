@@ -198,28 +198,30 @@ const WALK_TRANSFER_PENALTY_MIN = 4;
 // lineId -> [{ to: lineId, atStop, walkTo? }]. atStop: mevcut hattı bırakıp
 // `to` hattına binilen GERÇEK ortak durak (walkTo varsa, atStop'ta inip
 // yürüyerek walkTo'daki farklı durağa geçilir).
+//
+// linesByStopId (durak -> o duraktan geçen hatlar) üzerinden kurulur — otobüs
+// ağı (~1500 hat, ~13.000 durak) eklendiğinde tüm hat çiftlerini taraması
+// (O(hat²)) yerine sadece GERÇEKTEN ortak durağı olan hatları bulduğu için
+// (O(durak başına hat sayısı²), pratikte çok küçük) büyük ölçekte de hızlı kalır.
 let transferGraphCache = null;
 function buildTransferGraph() {
-  const lineIds = Object.keys(linesById);
   const graph = {};
-  lineIds.forEach((id) => (graph[id] = []));
+  Object.keys(linesById).forEach((id) => (graph[id] = []));
 
-  for (let i = 0; i < lineIds.length; i++) {
-    const a = lineIds[i];
-    const aSet = new Set(linesById[a].stopIds);
-    for (let j = i + 1; j < lineIds.length; j++) {
-      const b = lineIds[j];
-      const shared = linesById[b].stopIds.find((s) => aSet.has(s));
-      if (shared) {
-        graph[a].push({ to: b, atStop: shared });
-        graph[b].push({ to: a, atStop: shared });
+  Object.keys(linesByStopId).forEach((stopId) => {
+    const lines = linesByStopId[stopId];
+    if (lines.length < 2) return;
+    for (let i = 0; i < lines.length; i++) {
+      for (let j = i + 1; j < lines.length; j++) {
+        graph[lines[i]].push({ to: lines[j], atStop: stopId });
+        graph[lines[j]].push({ to: lines[i], atStop: stopId });
       }
     }
-  }
+  });
 
   WALK_TRANSFERS.forEach(([s1, s2]) => {
-    const linesAtS1 = lineIds.filter((id) => linesById[id].stopIds.includes(s1));
-    const linesAtS2 = lineIds.filter((id) => linesById[id].stopIds.includes(s2));
+    const linesAtS1 = linesByStopId[s1] || [];
+    const linesAtS2 = linesByStopId[s2] || [];
     linesAtS1.forEach((l1) => linesAtS2.forEach((l2) => {
       if (l1 === l2) return;
       graph[l1].push({ to: l2, atStop: s1, walkTo: s2 });
@@ -601,6 +603,36 @@ let localTransitNetworkPromise = null;
 let linesByLocalStopId = null;
 let localStopsById = null;
 
+// Otobüs ağını (transit_network.json) asıl rota motoruna (linesById/
+// linesByStopId, resolveTransfer'ın BFS'i buradan okur) katar. Otobüs durağı
+// id'leri (iett_xxx) raylı sistem durağı id'lerinden (stop_xxx) TAMAMEN AYRI
+// bir isim alanında olduğu için, iki ağ hiçbir zaman ortak bir stopId
+// paylaşmaz — knownStopId (isim eşleşmesiyle önceden kurulmuş, 754 gerçek
+// bağlantı) olmadan otobüs ve raylı sistem birbirinden kopuk iki ada olarak
+// kalırdı. Bu yüzden her knownStopId çifti WALK_TRANSFERS'e (yürüme/aynı-yer
+// aktarması) eklenir — bilinmeyen (knownStopId'si olmayan) otobüs durakları
+// hâlâ birbirleriyle (gerçek ortak durak üzerinden) bağlanır, sadece raylı
+// sisteme bağlanamaz.
+function mergeBusNetworkIntoRoutingGraph(data) {
+  data.stops.forEach((s) => {
+    if (!stopsById[s.id]) stopsById[s.id] = s;
+  });
+  data.lines.forEach((line) => {
+    if (linesById[line.id]) return;
+    linesById[line.id] = line;
+    (line.stopIds || []).forEach((sid) => {
+      (linesByStopId[sid] = linesByStopId[sid] || []).push(line.id);
+    });
+  });
+  data.stops.forEach((s) => {
+    if (s.knownStopId && stopsById[s.knownStopId]) {
+      WALK_TRANSFERS.push([s.id, s.knownStopId]);
+    }
+  });
+  transferGraphCache = null; // hat/durak seti değişti, aktarma grafiği yeniden kurulmalı
+  if (typeof runSearch === "function") runSearch();
+}
+
 function loadLocalTransitNetwork() {
   if (localTransitNetworkPromise) return localTransitNetworkPromise;
   localTransitNetworkPromise = fetch("transit_network.json?v=2")
@@ -614,6 +646,7 @@ function loadLocalTransitNetwork() {
           (linesByLocalStopId[sid] = linesByLocalStopId[sid] || []).push(line);
         });
       });
+      mergeBusNetworkIntoRoutingGraph(data);
       return data;
     })
     .catch(() => null);
