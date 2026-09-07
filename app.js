@@ -234,35 +234,83 @@ function buildTransferGraph() {
   return graph;
 }
 
+// originStopId -> { legsByLine, atStopByLine } (bkz. buildOriginBfsTree). Bir
+// arama sırasında AYNI origin'den onlarca/yüzlerce projeye tek tek BFS
+// koşturmak yerine (P proje = P tam BFS -> otobüs ağıyla ~1500 hatlık grafta
+// gözle görülür yavaşlık), origin başına TEK bir BFS ile "bu origin'den her
+// hatta kaç aktarmayla ulaşılır" ağacı bir kez kurulup önbelleklenir; her
+// proje için sadece o ağaçtan ucuz bir bakış yapılır (bkz. resolveTransfer).
+// buildTransferGraph gibi bu da graf değiştiğinde (bkz. mergeBusNetworkIntoRoutingGraph) sıfırlanır.
+let originBfsTreeCache = {};
+
 /**
- * originStopId/destStopId'nin bindiği hatlar arasında, GERÇEK ortak durak
- * (veya bilinen bir yürüme aktarması) zincirleyerek en az aktarmalı yolu
- * bulur (BFS — hat sayısı azken maliyeti önemsiz). Bulamazsa null döner.
+ * originStopId'nin bindiği hatlardan başlayıp, GERÇEK ortak durak (veya
+ * bilinen bir yürüme aktarması) üzerinden ulaşılabilen HER hatta en az
+ * SIÇRAMALI (hat değişimi) yolu tek bir BFS'te hesaplar (tek-kaynaklı en
+ * kısa yol ağacı).
+ *
+ * NOT: yürüme kenarları (WALK_TRANSFERS — artık sadece 2 elle doğrulanmış
+ * durak değil, otobüs ağı birleştirilirken eklenen 754 otomatik köprü de
+ * dahil) BFS'te DİĞER kenarlarla EŞİT ağırlıkta sayılıyor (0 değil). Önce
+ * yürümeyi "bedava" sayan bir 0-1 BFS denendi ama bu, o 754 köprü üzerinden
+ * birbiriyle alakasız onlarca otobüs hattına "bedava" atlayarak saçma,
+ * çok-aktarmalı rotalar üretti (gerçek veriyle test edilirken yakalandı) —
+ * geri alındı. Eşit ağırlıkla, iki yön arasında nadir durumlarda (eşit hat
+ * sayılı iki farklı yol olduğunda) hangi rotanın seçileceği tutarsız
+ * olabilir ama her iki sonuç da GERÇEK ve makul uzunlukta kalır.
  */
-function findLinePath(originStopId, destStopId, originLines, destLines) {
+function buildOriginBfsTree(originStopId, originLines) {
   if (!transferGraphCache) transferGraphCache = buildTransferGraph();
   const graph = transferGraphCache;
-  const destSet = new Set(destLines);
 
-  const visited = new Set(originLines);
-  const queue = originLines.map((lineId) => ({ lineId, atStop: originStopId, legs: [] }));
+  const legsByLine = {};
+  const atStopByLine = {};
+  originLines.forEach((lineId) => {
+    legsByLine[lineId] = [];
+    atStopByLine[lineId] = originStopId;
+  });
 
-  while (queue.length) {
-    const cur = queue.shift();
-    if (destSet.has(cur.lineId)) {
-      return mergeLegs([...cur.legs, { lineId: cur.lineId, from: cur.atStop, to: destStopId }]);
-    }
-    for (const edge of graph[cur.lineId] || []) {
-      if (visited.has(edge.to)) continue;
-      visited.add(edge.to);
-      const boardingLeg = { lineId: cur.lineId, from: cur.atStop, to: edge.atStop };
-      const legs = edge.walkTo
-        ? [...cur.legs, boardingLeg, { lineId: null, from: edge.atStop, to: edge.walkTo, walk: true }]
-        : [...cur.legs, boardingLeg];
-      queue.push({ lineId: edge.to, atStop: edge.walkTo || edge.atStop, legs });
+  // Index tabanlı kuyruk: Array.shift() büyük kuyruklarda O(n) olduğu için
+  // (binlerce hatlık grafta BFS'i O(n²)'ye çıkarır) push/ilerleyen index kullanılır.
+  const queue = [...originLines];
+  for (let qi = 0; qi < queue.length; qi++) {
+    const lineId = queue[qi];
+    const curAtStop = atStopByLine[lineId];
+    const curLegs = legsByLine[lineId];
+    for (const edge of graph[lineId] || []) {
+      if (legsByLine[edge.to] !== undefined) continue; // zaten (daha kısa/eşit yoldan) ziyaret edildi
+      const boardingLeg = { lineId, from: curAtStop, to: edge.atStop };
+      legsByLine[edge.to] = edge.walkTo
+        ? [...curLegs, boardingLeg, { lineId: null, from: edge.atStop, to: edge.walkTo, walk: true }]
+        : [...curLegs, boardingLeg];
+      atStopByLine[edge.to] = edge.walkTo || edge.atStop;
+      queue.push(edge.to);
     }
   }
-  return null;
+  return { legsByLine, atStopByLine };
+}
+
+/**
+ * originStopId/destStopId'nin bindiği hatlar arasında en az sıçramalı yolu
+ * bulur. Aynı origin için önbelleklenmiş tek-kaynaklı BFS ağacından, destLines
+ * içindeki hatlardan HANGİSİNE en az sıçramayla ulaşılabildiğini seçer.
+ */
+function findLinePath(originStopId, destStopId, originLines, destLines) {
+  let tree = originBfsTreeCache[originStopId];
+  if (!tree) {
+    tree = buildOriginBfsTree(originStopId, originLines);
+    originBfsTreeCache[originStopId] = tree;
+  }
+
+  let best = null;
+  destLines.forEach((lineId) => {
+    const legs = tree.legsByLine[lineId];
+    if (legs === undefined) return;
+    if (!best || legs.length < best.legs.length) best = { lineId, legs };
+  });
+  if (!best) return null;
+
+  return mergeLegs([...best.legs, { lineId: best.lineId, from: tree.atStopByLine[best.lineId], to: destStopId }]);
 }
 
 /** İki durak arasındaki hat/aktarma zincirini belirler (gerçek hat verisine göre, BFS ile). */
@@ -391,7 +439,7 @@ function estimateTransit(origin, dest) {
 // ---------------------------------------------------------------------------
 
 const TransitCache = {
-  KEY: "ist_ulasim_cache_v2", // v2: rota motoru BFS'e çevrildi + otobüs/vapur ağı eklendi, eski (yanlış) önbellek geçersiz kılındı
+  KEY: "ist_ulasim_cache_v3", // v3: BFS performans optimizasyonu (origin başına tek ağaç), eski önbellek geçersiz kılındı
   _mem: null,
   _load() {
     if (this._mem) return this._mem;
@@ -638,6 +686,7 @@ function mergeBusNetworkIntoRoutingGraph(data) {
     }
   });
   transferGraphCache = null; // hat/durak seti değişti, aktarma grafiği yeniden kurulmalı
+  originBfsTreeCache = {}; // önceki origin'ler için önbelleklenmiş BFS ağaçları artık geçersiz
   if (typeof runSearch === "function") runSearch();
 }
 
@@ -841,6 +890,13 @@ function spliceDiscoveredLines(stopId, discovery) {
     (linesByStopId[l.hubStopId] = linesByStopId[l.hubStopId] || []).push(lineId);
     addedCount += 1;
   });
+
+  // Yeni hat/kenar eklendi — önbelleklenmiş aktarma grafiği ve BFS ağaçları
+  // bunu bilmez, yoksa canlı keşfedilen hatlar hiç kullanılmaz.
+  if (addedCount > 0) {
+    transferGraphCache = null;
+    originBfsTreeCache = {};
+  }
 
   return addedCount;
 }
