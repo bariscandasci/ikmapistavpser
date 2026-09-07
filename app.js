@@ -588,9 +588,9 @@ function findKnownStopMatch(text) {
 }
 
 // ---------------------------------------------------------------------------
-// Yerel toplu taşıma ağı (transit_network.json — OSM/Overpass, EGO Genel
-// Müdürlüğü, 28.08.2026): 350 hat (314 otobüs dahil) ve ~3.600 gerçek durak.
-// Adres/semt arama artık ÖNCELİKLE bu önceden hazırlanmış, internet
+// Yerel toplu taşıma ağı (transit_network.json — İBB Açık Veri Portalı, İETT
+// resmi GTFS verisi, 21.04.2026): 1486 gerçek otobüs hattı ve 13.183 gerçek
+// durak. Adres/semt arama artık ÖNCELİKLE bu önceden hazırlanmış, internet
 // gerektirmeyen veri setini kullanıyor — canlı Overpass sorgusundan (tek
 // nokta etrafında 700m, çoğu otobüs hattını kaçırabiliyordu) çok daha
 // eksiksiz ve anında sonuç veriyor. discoverNearbyTransit() (Overpass) artık
