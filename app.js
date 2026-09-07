@@ -391,7 +391,7 @@ function estimateTransit(origin, dest) {
 // ---------------------------------------------------------------------------
 
 const TransitCache = {
-  KEY: "ist_ulasim_cache_v1", // v10: "Proje → Aday Havuzu" modunda da proje konumu için canlı otobüs/metro keşfi çalışıyor
+  KEY: "ist_ulasim_cache_v2", // v2: rota motoru BFS'e çevrildi + otobüs/vapur ağı eklendi, eski (yanlış) önbellek geçersiz kılındı
   _mem: null,
   _load() {
     if (this._mem) return this._mem;
