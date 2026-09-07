@@ -158,6 +158,173 @@ const ISTANBUL_DATA = {
         { id: "sancaktepe_merkez", name: "Sancaktepe Merkez", lat: 41.0000, lng: 29.2330, accessStopId: "stop_sancaktepe" },
       ],
     },
+
+    // --- KALAN İLÇELER (39 ilçenin tamamı için) — 2026-09-07 eklendi ---
+    // Çoğu, adıyla birebir örtüşen veya çok yakın gerçek bir raylı/vapur
+    // durağına bağlandı (ör. Bayrampaşa->stop_bayrampasa_maltepe,
+    // Esenler->stop_esenler). Raylı/vapur ağından ÇOK uzak kalan ilçeler
+    // (Beykoz, Avcılar, Beylikdüzü, Büyükçekmece, Çatalca, Silivri, Şile)
+    // için en yakın GERÇEK İETT otobüs durağı (transit_network.json'dan,
+    // isim+mesafeyle bulundu) kullanıldı — bu duraklar gerçek otobüs
+    // hatlarıyla ağın geri kalanına bağlı olduğu doğrulandı (BFS testi),
+    // ama rayla doğrudan bağlantıları olmadığından süre tahminleri bu
+    // ilçeler için daha kaba olacaktır.
+
+    // Avrupa yakası
+    {
+      id: "zeytinburnu", name: "Zeytinburnu", lat: 40.9950, lng: 28.9020, accessStopId: "stop_zeytinburnu",
+      neighborhoods: [
+        { id: "zeytinburnu_kazlicesme", name: "Kazlıçeşme", lat: 40.9927, lng: 28.9170, accessStopId: "stop_kazlicesme" },
+      ],
+    },
+    {
+      id: "eyupsultan", name: "Eyüpsultan", lat: 41.0480, lng: 28.9339, accessStopId: "stop_eyupsultan_teleferik",
+      neighborhoods: [
+        { id: "eyupsultan_alibeykoy", name: "Alibeyköy", lat: 41.0792, lng: 28.9496, accessStopId: "stop_alibeykoy" },
+      ],
+    },
+    {
+      id: "kagithane", name: "Kağıthane", lat: 41.0796, lng: 28.9731, accessStopId: "stop_kagithane",
+      neighborhoods: [
+        { id: "kagithane_caglayan", name: "Çağlayan", lat: 41.0708, lng: 28.9806, accessStopId: "stop_caglayan" },
+      ],
+    },
+    {
+      id: "beyoglu", name: "Beyoğlu", lat: 41.0370, lng: 28.9850, accessStopId: "stop_taksim",
+      neighborhoods: [
+        { id: "beyoglu_karakoy", name: "Karaköy", lat: 41.0222, lng: 28.9748, accessStopId: "stop_karakoy" },
+        { id: "beyoglu_cihangir", name: "Cihangir", lat: 41.0316, lng: 28.9822, accessStopId: "stop_taksim" },
+      ],
+    },
+    {
+      // Not: Sarıyer geniş bir ilçe; en yakın gerçek durak (M2'nin kuzey ucu
+      // Hacıosman) merkez/İstinye'ye birkaç km mesafede — yaklaşık kabul edildi.
+      id: "sariyer", name: "Sarıyer", lat: 41.1670, lng: 29.0570, accessStopId: "stop_haciosman",
+      neighborhoods: [
+        { id: "sariyer_maslak", name: "Maslak", lat: 41.1082, lng: 29.0209, accessStopId: "stop_itu_ayazaga" },
+        { id: "sariyer_istinye", name: "İstinye", lat: 41.1090, lng: 29.0570, accessStopId: "stop_haciosman" },
+      ],
+    },
+    {
+      id: "bayrampasa", name: "Bayrampaşa", lat: 41.0360, lng: 28.9080, accessStopId: "stop_bayrampasa_maltepe",
+      neighborhoods: [
+        { id: "bayrampasa_merkez", name: "Bayrampaşa Merkez", lat: 41.0360, lng: 28.9080, accessStopId: "stop_bayrampasa_maltepe" },
+      ],
+    },
+    {
+      id: "esenler", name: "Esenler", lat: 41.0440, lng: 28.8760, accessStopId: "stop_esenler",
+      neighborhoods: [
+        { id: "esenler_merkez", name: "Esenler Merkez", lat: 41.0440, lng: 28.8760, accessStopId: "stop_esenler" },
+      ],
+    },
+    {
+      id: "gungoren", name: "Güngören", lat: 41.0180, lng: 28.8730, accessStopId: "stop_gungoren",
+      neighborhoods: [
+        { id: "gungoren_merkez", name: "Güngören Merkez", lat: 41.0180, lng: 28.8730, accessStopId: "stop_gungoren" },
+      ],
+    },
+    {
+      id: "bahcelievler", name: "Bahçelievler", lat: 41.0000, lng: 28.8590, accessStopId: "stop_bahcelievler",
+      neighborhoods: [
+        { id: "bahcelievler_merkez", name: "Bahçelievler Merkez", lat: 41.0000, lng: 28.8590, accessStopId: "stop_bahcelievler" },
+      ],
+    },
+    {
+      // Not: en yakın gerçek durak (M7 Veysel Karani-Akşemsettin) merkeze
+      // ~2km — yaklaşık kabul edildi.
+      id: "gaziosmanpasa", name: "Gaziosmanpaşa", lat: 41.0650, lng: 28.9150, accessStopId: "stop_veysel_karani_aksemsettin",
+      neighborhoods: [
+        { id: "gaziosmanpasa_merkez", name: "Gaziosmanpaşa Merkez", lat: 41.0650, lng: 28.9150, accessStopId: "stop_veysel_karani_aksemsettin" },
+      ],
+    },
+    {
+      // "50. Yıl-Baştabya" (T4) gerçekten Sultangazi'nin 50. Yıl Mahallesi'nde.
+      id: "sultangazi", name: "Sultangazi", lat: 41.1070, lng: 28.8670, accessStopId: "stop_50_yil_bastabya",
+      neighborhoods: [
+        { id: "sultangazi_merkez", name: "Sultangazi Merkez", lat: 41.1070, lng: 28.8670, accessStopId: "stop_50_yil_bastabya" },
+      ],
+    },
+    {
+      id: "arnavutkoy", name: "Arnavutköy", lat: 41.1850, lng: 28.7400, accessStopId: "stop_arnavutkoy_hastane",
+      neighborhoods: [
+        { id: "arnavutkoy_merkez", name: "Arnavutköy Merkez", lat: 41.1850, lng: 28.7400, accessStopId: "stop_arnavutkoy_hastane" },
+      ],
+    },
+    {
+      // Raylı/vapur ağından uzak — en yakın GERÇEK İETT durağı kullanıldı
+      // (bkz. blok başındaki not).
+      id: "avcilar", name: "Avcılar", lat: 40.9800, lng: 28.7210, accessStopId: "iett_509586",
+      neighborhoods: [
+        { id: "avcilar_merkez", name: "Avcılar Merkez", lat: 40.9800, lng: 28.7210, accessStopId: "iett_509586" },
+      ],
+    },
+    {
+      id: "beylikduzu", name: "Beylikdüzü", lat: 41.0020, lng: 28.6400, accessStopId: "iett_5252405",
+      neighborhoods: [
+        { id: "beylikduzu_merkez", name: "Beylikdüzü Merkez", lat: 41.0020, lng: 28.6400, accessStopId: "iett_5252405" },
+      ],
+    },
+    {
+      id: "buyukcekmece", name: "Büyükçekmece", lat: 41.0200, lng: 28.5850, accessStopId: "iett_290569",
+      neighborhoods: [
+        { id: "buyukcekmece_merkez", name: "Büyükçekmece Merkez", lat: 41.0200, lng: 28.5850, accessStopId: "iett_290569" },
+      ],
+    },
+    {
+      id: "catalca", name: "Çatalca", lat: 41.1430, lng: 28.4610, accessStopId: "iett_284339",
+      neighborhoods: [
+        { id: "catalca_merkez", name: "Çatalca Merkez", lat: 41.1430, lng: 28.4610, accessStopId: "iett_284339" },
+      ],
+    },
+    {
+      id: "silivri", name: "Silivri", lat: 41.0730, lng: 28.2470, accessStopId: "iett_284638",
+      neighborhoods: [
+        { id: "silivri_merkez", name: "Silivri Merkez", lat: 41.0730, lng: 28.2470, accessStopId: "iett_284638" },
+      ],
+    },
+
+    // Anadolu yakası
+    {
+      id: "adalar", name: "Adalar", lat: 40.8747, lng: 29.1256, accessStopId: "stop_buyukada",
+      neighborhoods: [
+        { id: "adalar_heybeliada", name: "Heybeliada", lat: 40.8780, lng: 29.1014, accessStopId: "stop_heybeliada" },
+        { id: "adalar_burgazada", name: "Burgazada", lat: 40.8811, lng: 29.0708, accessStopId: "stop_burgazada" },
+      ],
+    },
+    {
+      // Raylı/vapur ağından uzak — en yakın GERÇEK İETT durağı kullanıldı.
+      id: "beykoz", name: "Beykoz", lat: 41.1250, lng: 29.0930, accessStopId: "iett_293015",
+      neighborhoods: [
+        { id: "beykoz_merkez", name: "Beykoz Merkez", lat: 41.1250, lng: 29.0930, accessStopId: "iett_293015" },
+      ],
+    },
+    {
+      id: "cekmekoy", name: "Çekmeköy", lat: 41.0145, lng: 29.1895, accessStopId: "stop_cekmekoy",
+      neighborhoods: [
+        { id: "cekmekoy_merkez", name: "Çekmeköy Merkez", lat: 41.0145, lng: 29.1895, accessStopId: "stop_cekmekoy" },
+      ],
+    },
+    {
+      id: "sultanbeyli", name: "Sultanbeyli", lat: 40.9659, lng: 29.2725, accessStopId: "stop_sultanbeyli",
+      neighborhoods: [
+        { id: "sultanbeyli_merkez", name: "Sultanbeyli Merkez", lat: 40.9659, lng: 29.2725, accessStopId: "stop_sultanbeyli" },
+      ],
+    },
+    {
+      // Raylı ağdan çok uzak (~20km+) — en yakın GERÇEK İETT durağı kullanıldı,
+      // ama gerçekte Şile'den şehir merkezine ulaşım büyük ölçüde özel/servis
+      // araçlarına dayanır; bu tahmin oldukça kabadır.
+      id: "sile", name: "Şile", lat: 41.1750, lng: 29.6130, accessStopId: "iett_284667",
+      neighborhoods: [
+        { id: "sile_merkez", name: "Şile Merkez", lat: 41.1750, lng: 29.6130, accessStopId: "iett_284667" },
+      ],
+    },
+    {
+      id: "tuzla", name: "Tuzla", lat: 40.8298, lng: 29.3227, accessStopId: "stop_tuzla",
+      neighborhoods: [
+        { id: "tuzla_merkez", name: "Tuzla Merkez", lat: 40.8298, lng: 29.3227, accessStopId: "stop_tuzla" },
+      ],
+    },
   ],
 
   // HAFTALIK ACİL PROJELER: Buraya id'sini eklediğin projeler, sonuç
