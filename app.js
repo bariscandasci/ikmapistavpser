@@ -192,6 +192,8 @@ function roundTo5(n) {
 // beklenen bir liste.
 const WALK_TRANSFERS = [
   ["stop_sisli", "stop_mecidiyekoy"],
+  ["stop_kadikoy_iskele", "stop_kadikoy"], // Kadıköy vapur iskelesi ~150m, M4 durağı
+  ["stop_eminonu_iskele", "stop_eminonu"], // Eminönü vapur iskelesi ~100m, T1 durağı
 ];
 const WALK_TRANSFER_PENALTY_MIN = 4;
 
@@ -572,6 +574,12 @@ const KNOWN_STOP_NAME_INDEX = [
   ["sultanbeyli", "stop_sultanbeyli"],
   ["hacıosman", "stop_haciosman"],
   ["4. levent", "stop_4_levent"],
+  ["büyükada", "stop_buyukada"],
+  ["heybeliada", "stop_heybeliada"],
+  ["burgazada", "stop_burgazada"],
+  ["kınalıada", "stop_kinaliada"],
+  ["beşiktaş iskelesi", "stop_besiktas_iskele"],
+  ["beşiktaş", "stop_kabatas"],
 ];
 
 // OSM'deki "name" etiketi çoğunlukla hat numarasını zaten içeriyor
@@ -956,13 +964,13 @@ function durationBucket(min) {
 
 const MODE_ICON = {
   metro: "🚇", tramvay: "🚊", marmaray: "🚆", funikuler: "🚡", tren: "🚆",
-  otobus: "🚌", hub: "📍", yurume: "🚶",
+  otobus: "🚌", vapur: "⛴️", hub: "📍", yurume: "🚶",
 };
 // Haritada bacak başına renk: İstanbul toplu taşıma kurumsal renklerine
 // yakın bir palet (metro kırmızı, tramvay mavi, Marmaray mor, füniküler turuncu).
 const MODE_LINE_COLOR = {
   metro: "#dc2626", tramvay: "#2563eb", marmaray: "#7c3aed", funikuler: "#ea580c",
-  tren: "#7c3aed", otobus: "#0d9488", hub: "#64748b", yurume: "#94a3b8",
+  tren: "#7c3aed", otobus: "#0d9488", vapur: "#0891b2", hub: "#64748b", yurume: "#94a3b8",
 };
 
 /**

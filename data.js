@@ -479,6 +479,25 @@ const ISTANBUL_DATA = {
     { id: "stop_gokturk", name: "Göktürk", mode: "metro", lat: 41.1768557, lng: 28.8836397 },
     { id: "stop_kemerburgaz", name: "Kemerburgaz", mode: "metro", lat: 41.1590973, lng: 28.9101084 },
     { id: "stop_hasdal", name: "Hasdal", mode: "metro", lat: 41.1212278, lng: 28.9467385 },
+
+    // VAPUR İSKELELERİ — OpenStreetMap/Overpass (route=ferry), 2026-09-07.
+    // Not: İstanbul'un vapur hatları OSM'de metro kadar iyi haritalanmamış —
+    // 21 route=ferry relation'ından sadece birkaçında gerçek, isimli, koordinatlı
+    // durak (stop_position/ferry_terminal node'u) vardı; "Kabataş-Üsküdar",
+    // "Eminönü-Üsküdar" gibi bazı GERÇEK (relation adıyla doğrulanan) hatların
+    // OSM'de hiç durak noktası yoktu, o hatlarda mevcut raylı sistem hub'ı
+    // (stop_kabatas/stop_uskudar) yaklaşık iskele konumu olarak kullanıldı —
+    // aşağıdaki transitLines bloğunda ayrıca not düşüldü. stop_kadikoy_iskele
+    // ve stop_eminonu_iskele, aynı isimli mevcut metro/tramvay duraklarına
+    // (stop_kadikoy ~150m, stop_eminonu ~100m) app.js'teki WALK_TRANSFERS ile
+    // bağlanır (Şişli/Mecidiyeköy ile aynı yöntem).
+    { id: "stop_kadikoy_iskele", name: "Kadıköy İskelesi", mode: "vapur", lat: 40.9918235, lng: 29.0215476 },
+    { id: "stop_besiktas_iskele", name: "Beşiktaş İskelesi", mode: "vapur", lat: 41.0399916, lng: 29.0057053 },
+    { id: "stop_eminonu_iskele", name: "Eminönü İskelesi", mode: "vapur", lat: 41.0183472, lng: 28.973161 },
+    { id: "stop_kinaliada", name: "Kınalıada İskelesi", mode: "vapur", lat: 40.9102213, lng: 29.0558369 },
+    { id: "stop_burgazada", name: "Burgazada İskelesi", mode: "vapur", lat: 40.8810827, lng: 29.0707969 },
+    { id: "stop_heybeliada", name: "Heybeliada İskelesi", mode: "vapur", lat: 40.8780078, lng: 29.1014071 },
+    { id: "stop_buyukada", name: "Büyükada İskelesi", mode: "vapur", lat: 40.8747256, lng: 29.1255631 },
   ],
   transitLines: [
     {
@@ -585,6 +604,36 @@ const ISTANBUL_DATA = {
       id: "M11", name: "M11: Halkalı → Gayrettepe", mode: "metro", verified: true,
       source: "OpenStreetMap/Overpass API — 2026-09-07",
       stopIds: ["stop_halkali", "stop_halkali_stadi", "stop_olimpiyatkoy", "stop_kayasehir", "stop_ibn_haldun_universitesi", "stop_arnavutkoy_hastane", "stop_tasoluk", "stop_kargo_terminali", "stop_istanbul_havalimani", "stop_ihsaniye", "stop_gokturk", "stop_kemerburgaz", "stop_hasdal", "stop_kagithane", "stop_gayrettepe"],
+    },
+    {
+      id: "F_KADIKOY_BESIKTAS", name: "Vapur: Kadıköy İskelesi ↔ Beşiktaş İskelesi (Şehir Hatları)", mode: "vapur", verified: true,
+      source: "OpenStreetMap/Overpass API (route=ferry, Şehir Hatları) — 2026-09-07",
+      stopIds: ["stop_kadikoy_iskele", "stop_besiktas_iskele"],
+    },
+    {
+      id: "F_KADIKOY_EMINONU", name: "Vapur: Kadıköy İskelesi ↔ Eminönü İskelesi", mode: "vapur", verified: true,
+      source: "OpenStreetMap/Overpass API (route=ferry) — 2026-09-07",
+      stopIds: ["stop_kadikoy_iskele", "stop_eminonu_iskele"],
+    },
+    {
+      id: "F_KADIKOY_KARAKOY", name: "Vapur: Kadıköy İskelesi ↔ Karaköy (Turyol)", mode: "vapur", verified: true,
+      source: "OpenStreetMap/Overpass API (route=ferry, Turyol) — 2026-09-07. Karaköy ucu için OSM'de ayrı bir iskele noktası yoktu, mevcut stop_karakoy (T1 tramvay hub'ı) yaklaşık konum olarak kullanıldı.",
+      stopIds: ["stop_kadikoy_iskele", "stop_karakoy"],
+    },
+    {
+      id: "F_KADIKOY_ADALAR", name: "Vapur: Kadıköy İskelesi ↔ Adalar (Kınalıada-Burgazada-Heybeliada-Büyükada)", mode: "vapur", verified: true,
+      source: "OpenStreetMap/Overpass API (route=ferry, Şehir Hatları) — 2026-09-07",
+      stopIds: ["stop_kadikoy_iskele", "stop_kinaliada", "stop_burgazada", "stop_heybeliada", "stop_buyukada"],
+    },
+    {
+      id: "F_KABATAS_USKUDAR", name: "Vapur: Kabataş ↔ Üsküdar (İDO)", mode: "vapur", verified: true,
+      source: "OpenStreetMap/Overpass API (route=ferry relation'ı, \"Kabataş-Üsküdar\") — 2026-09-07. OSM'de bu relation'ın gerçek iskele durak noktası yoktu; her iki uç için de mevcut raylı sistem hub'ı (stop_kabatas, stop_uskudar) YAKLAŞIK iskele konumu olarak kullanıldı — gerçekte iskeleler bu hub'ların hemen yanında.",
+      stopIds: ["stop_kabatas", "stop_uskudar"],
+    },
+    {
+      id: "F_EMINONU_USKUDAR", name: "Vapur: Eminönü İskelesi ↔ Üsküdar", mode: "vapur", verified: true,
+      source: "OpenStreetMap/Overpass API (route=ferry relation'ı, \"Eminönü-Üsküdar\") — 2026-09-07. Üsküdar ucu için OSM'de ayrı iskele noktası yoktu, mevcut stop_uskudar hub'ı YAKLAŞIK konum olarak kullanıldı.",
+      stopIds: ["stop_eminonu_iskele", "stop_uskudar"],
     },
   ],
   // Not: rota hesaplama (app.js -> resolveTransfer) artık bu listeye değil,
