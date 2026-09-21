@@ -11,6 +11,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <style>
   html, body { height: 100%; }
@@ -81,6 +82,16 @@
     padding: 0.25rem 0.5rem;
   }
 
+  .candidate-card {
+    width: 100%; text-align: left; padding: 0.55rem 0.7rem; border-radius: 0.6rem;
+    border: 1px solid #e2e8f0; background: white; transition: all .12s;
+  }
+  .candidate-card:hover { border-color: #c7d2fe; background: #f8fafc; }
+  .candidate-card-selected { border-color: #4f46e5 !important; background: #eef2ff !important; }
+  .candidate-card-eliminated { opacity: 0.6; }
+  .candidate-score-bar-track { height: 0.45rem; border-radius: 999px; background: #f1f5f9; overflow: hidden; }
+  .candidate-score-bar-fill { height: 100%; background: #6366f1; border-radius: 999px; }
+
   #routeDetail { border: 1px solid #e2e8f0; border-radius: 0.75rem; background: white; }
   .route-step { display: flex; align-items: flex-start; gap: 0.55rem; padding: 0.4rem 0; }
   .route-step-num {
@@ -139,65 +150,38 @@
 </head>
 <body class="bg-slate-50">
 
-<div class="flex h-screen w-screen overflow-hidden">
+<div id="mainLayout" class="flex h-screen w-screen overflow-hidden">
 
   <!-- SOL PANEL -->
   <aside class="w-[400px] shrink-0 flex flex-col border-r border-slate-200 bg-white" style="background-image: url('assets/tepe-logo.png'); background-size: 220px auto; background-position: center 60%; background-repeat: no-repeat;">
 
-    <header class="px-5 pt-3 pb-2 border-b border-slate-100 flex items-start justify-between gap-2">
-      <div class="min-w-0">
-        <h1 class="text-base font-bold text-slate-800">Ulaşım &amp; Proje Eşleştirme</h1>
-        <p class="text-[11px] text-slate-500 mt-0.5">İK saha personeli işe alım — İstanbul toplu taşıma modülü</p>
-      </div>
-      <div class="shrink-0 flex flex-col gap-1">
+    <header class="px-5 pt-3 pb-2 border-b border-slate-100">
+      <h1 class="text-base font-bold text-slate-800">Ulaşım &amp; Proje Eşleştirme</h1>
+      <p class="text-[11px] text-slate-500 mt-0.5">İK saha personeli işe alım — İstanbul toplu taşıma modülü</p>
+      <!-- Önceden sağda dikey bir sütun olarak 5 buton üst üste diziliyordu
+           (~180px yükseklik) ve altındaki sonuç listesine neredeyse hiç yer
+           kalmıyordu, kısa ekranlarda özellikle. Tam genişlikte satır satır
+           sarılan bir düzene çevirince aynı butonlar ~2 satıra sığıyor. -->
+      <div class="flex flex-wrap gap-1.5 mt-2">
         <button id="urgentBtn" class="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white transition whitespace-nowrap">🔥 Acil Projeler</button>
         <button id="inactiveBtn" class="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-800 text-white transition whitespace-nowrap">🔧 Proje Aç/Kapa</button>
         <button id="addProjectBtn" class="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition whitespace-nowrap">➕ Proje Ekle</button>
+        <button id="uploadCandidatesBtn" class="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white transition whitespace-nowrap">📋 Aday Yükle</button>
+        <button id="batchMatchBtn" class="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white transition whitespace-nowrap">🎯 Toplu Eşleştirme</button>
       </div>
     </header>
 
-    <div class="px-5 pt-2 pb-2 border-b border-slate-100">
+    <div class="px-5 pt-1.5 pb-1.5 border-b border-slate-100">
       <div class="flex gap-2 bg-slate-100 p-1 rounded-lg">
         <button class="mode-btn mode-btn-active" data-mode="origin-to-project">Aday → Proje</button>
         <button class="mode-btn" data-mode="project-to-origin">Proje → Aday Havuzu</button>
+        <button class="mode-btn" data-mode="project-to-candidates">Proje → Gerçek Adaylar</button>
       </div>
     </div>
 
-    <div class="px-5 py-2 border-b border-slate-100 space-y-2">
-
-      <div id="panel-origin">
-        <label class="text-xs font-semibold text-slate-600">Adayın İlçesi / Mahallesi</label>
-        <select id="originSelect" class="mt-1 w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 bg-white">
-          <option value="">Seçiniz…</option>
-        </select>
-
-        <label class="text-xs font-semibold text-slate-600 block mt-2">veya Adres / Semt Ara (ör. "Kadıköy Rıhtım")</label>
-        <div class="flex gap-1.5 mt-1">
-          <input id="addressInput" type="text" placeholder="Adres, semt veya işletme adı…" class="flex-1 min-w-0 border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 bg-white" />
-          <button id="addressSearchBtn" class="shrink-0 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition">Bul</button>
-        </div>
-        <div id="addressStatus" class="text-[11px] text-slate-400 mt-1 leading-snug"></div>
-      </div>
-
-      <div id="panel-project" class="hidden">
-        <label class="text-xs font-semibold text-slate-600">Açık Proje</label>
-        <select id="projectSelect" class="mt-1 w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 bg-white">
-          <option value="">Seçiniz…</option>
-        </select>
-      </div>
-
-      <div>
-        <label class="text-xs font-semibold text-slate-600 block mb-1">Süre Filtresi</label>
-        <div class="flex flex-wrap gap-1.5">
-          <button class="threshold-btn threshold-btn-active" data-threshold="all">Tümü</button>
-          <button class="threshold-btn" data-threshold="30">≤ 30 dk</button>
-          <button class="threshold-btn" data-threshold="45">≤ 45 dk</button>
-          <button class="threshold-btn" data-threshold="60">≤ 60 dk</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Kaydırılabilir sonuç bölgesi: üstteki seçim kontrolleri sabit kalır -->
+    <!-- Kaydırılabilir sonuç bölgesi: aday/proje seçimi + filtreler artık
+         haritanın üstündeki çubukta (bkz. #topToolbar) — burada sadece
+         sonuç listesine daha fazla yer kalsın diye taşındı. -->
     <div class="flex-1 overflow-y-auto min-h-0">
 
       <!-- YAKINDAKİ GERÇEK HATLAR (canlı Overpass keşfi) — varsayılan daraltılmış -->
@@ -212,8 +196,12 @@
       <!-- ADIM ADIM ROTA DETAYI -->
       <div id="routeDetail" class="hidden mx-5 mt-2 p-2.5">
         <div id="routeDetailTitle" class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5"></div>
+        <div id="routeDetailVariantToggle" class="hidden flex gap-2 bg-slate-100 p-1 rounded-lg mb-2">
+          <button type="button" id="routeVariantFastestBtn" class="mode-btn mode-btn-active">⏱ En Hızlı</button>
+          <button type="button" id="routeVariantFewestBtn" class="mode-btn">🔀 En Az Aktarmalı</button>
+        </div>
         <div id="routeDetailWarning" class="hidden text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5 mb-2">
-          ⚠️ Bu rota tahmini bir hat içeriyor (gerçek EGO hattıyla doğrulanamadı). İK, bu bölümü adaya kesin bilgi gibi aktarmamalı.
+          ⚠️ Bu rota tahmini bir hat içeriyor (gerçek bir hat verisiyle doğrulanamadı). İK, bu bölümü adaya kesin bilgi gibi aktarmamalı.
         </div>
         <div id="routeDetailSteps"></div>
       </div>
@@ -231,10 +219,63 @@
 
   </aside>
 
-  <!-- HARİTA -->
-  <main class="flex-1 relative bg-slate-100">
-    <div id="mapWrap">
-      <div id="map"></div>
+  <!-- HARİTA + ÜST ARAÇ ÇUBUĞU -->
+  <main class="flex-1 flex flex-col bg-slate-100 min-w-0">
+    <!-- Aday/proje seçimi + süre/pozisyon filtreleri — önceden sol panelde
+         dikey dizilip sonuç listesine neredeyse hiç yer bırakmıyordu; burada
+         haritanın üstünde yatay bir çubuk olarak, sol paneli sonuçlar için
+         boşaltıyor. -->
+    <div id="topToolbar" class="shrink-0 flex flex-wrap items-end gap-x-5 gap-y-2 px-5 py-2.5 bg-white border-b border-slate-200">
+      <div id="panel-origin" class="flex flex-wrap items-end gap-x-4 gap-y-2">
+        <div>
+          <label class="text-xs font-semibold text-slate-600 block mb-1">Adayın İlçesi / Mahallesi</label>
+          <select id="originSelect" class="w-56 border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 bg-white">
+            <option value="">Seçiniz…</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-slate-600 block mb-1">veya Adres / Semt Ara (ör. "Kadıköy Rıhtım")</label>
+          <div class="flex gap-1.5">
+            <input id="addressInput" type="text" placeholder="Adres, semt veya işletme adı…" class="w-64 border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 bg-white" />
+            <button id="addressSearchBtn" class="shrink-0 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition">Bul</button>
+          </div>
+        </div>
+        <div id="addressStatus" class="text-[11px] text-slate-400 leading-snug basis-full"></div>
+      </div>
+
+      <div id="panel-project" class="hidden">
+        <label class="text-xs font-semibold text-slate-600 block mb-1">Açık Proje</label>
+        <select id="projectSelect" class="w-72 border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 bg-white">
+          <option value="">Seçiniz…</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="text-xs font-semibold text-slate-600 block mb-1">Süre Filtresi</label>
+        <div class="flex flex-wrap gap-1.5">
+          <button class="threshold-btn threshold-btn-active" data-threshold="all">Tümü</button>
+          <button class="threshold-btn" data-threshold="30">≤ 30 dk</button>
+          <button class="threshold-btn" data-threshold="45">≤ 45 dk</button>
+          <button class="threshold-btn" data-threshold="60">≤ 60 dk</button>
+        </div>
+      </div>
+
+      <div>
+        <label class="text-xs font-semibold text-slate-600 block mb-1">Pozisyon Filtresi</label>
+        <div class="flex flex-wrap gap-1.5">
+          <button class="threshold-btn position-btn threshold-btn-active" data-position="all">Tümü</button>
+          <button class="threshold-btn position-btn" data-position="Şeflik">Şeflik</button>
+          <button class="threshold-btn position-btn" data-position="Temizlik Görevlisi">Temizlik Görevlisi</button>
+          <button class="threshold-btn position-btn" data-position="Servis">Servis</button>
+          <button class="threshold-btn position-btn" data-position="Bahçıvan">Bahçıvan</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex-1 relative min-h-0">
+      <div id="mapWrap">
+        <div id="map"></div>
+      </div>
     </div>
   </main>
 </div>
@@ -294,8 +335,18 @@
         </select>
       </div>
       <div>
+        <label class="text-xs font-semibold text-slate-600">Pozisyon *</label>
+        <select name="position" required class="mt-1 w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 bg-white">
+          <option value="Şeflik">Şeflik</option>
+          <option value="Temizlik Görevlisi">Temizlik Görevlisi</option>
+          <option value="Servis">Servis</option>
+          <option value="Bahçıvan">Bahçıvan</option>
+        </select>
+        <p class="text-[10px] text-slate-400 mt-0.5">Bu proje için aranan pozisyon — Pozisyon Filtresi'nde bununla eşleşir.</p>
+      </div>
+      <div>
         <label class="text-xs font-semibold text-slate-600">Adres *</label>
-        <input name="address" required placeholder="ör. Bilkent, Çankaya" class="mt-1 w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700" />
+        <input name="address" required placeholder="ör. Levent, Beşiktaş" class="mt-1 w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700" />
       </div>
       <div class="grid grid-cols-2 gap-2">
         <div>
@@ -329,6 +380,11 @@
         <label class="text-xs font-semibold text-slate-600">Yönlendirme</label>
         <input name="referral" placeholder="Ofise davet>İSG" class="mt-1 w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700" />
       </div>
+      <div>
+        <label class="text-xs font-semibold text-slate-600">Kontenjan</label>
+        <input name="capacity" type="number" min="0" placeholder="Sınırsız (boş bırakılabilir)" class="mt-1 w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700" />
+        <p class="text-[10px] text-slate-400 mt-0.5">Toplu Eşleştirme'de bu projeye en fazla kaç aday atanacağını belirler.</p>
+      </div>
       <div id="addProjectStatus" class="text-[11px] text-slate-500 leading-snug"></div>
     </form>
     <div class="flex justify-end gap-2 px-4 py-3 border-t border-slate-100">
@@ -338,7 +394,133 @@
   </div>
 </div>
 
-<script src="data.js?v=4"></script>
-<script src="app.js?v=4"></script>
+<!-- ADAY EXCEL YÜKLEME MODALI -->
+<div id="uploadCandidatesModal" class="hidden fixed inset-0 bg-black/40 z-[2000] flex items-center justify-center p-6">
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+      <h2 class="text-sm font-bold text-slate-800">Aday Excel Yükle</h2>
+      <button id="uploadCandidatesClose" class="text-slate-400 hover:text-slate-600 text-lg leading-none">&times;</button>
+    </div>
+    <div class="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      <p class="text-[11px] text-slate-500 leading-snug">
+        Aday listenizin bulunduğu bir .xlsx dosyası seçin. Sütun başlıkları farklı kaynaklarda (Eleman.net, Kariyer.net...) farklı olabilir — bir sonraki adımda hangi sütunun hangi alana karşılık geldiğini siz onaylarsınız. Aynı telefon numarasına sahip adaylar otomatik tekilleştirilir. Veri şu an sadece bu tarayıcıda saklanır (bkz. aşağıdaki not).
+      </p>
+      <input id="candidateFileInput" type="file" accept=".xlsx,.xls" class="block w-full text-sm text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-700 file:font-semibold file:cursor-pointer" />
+      <div id="candidateMappingArea" class="hidden space-y-2">
+        <div class="flex items-center justify-between">
+          <div class="text-xs font-semibold text-slate-600">Sütun Eşleme</div>
+          <button id="candidateAiMapBtn" type="button" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800">✨ AI ile Eşleştir</button>
+        </div>
+        <div id="candidateMappingRows" class="space-y-1.5"></div>
+      </div>
+      <div id="candidateUploadStatus" class="text-[11px] text-slate-500 leading-snug"></div>
+      <div class="text-[10px] text-slate-400 leading-snug border-t border-dashed border-slate-200 pt-2">
+        Not: Aday verisi şu an yalnızca bu tarayıcıda (localStorage) saklanıyor — projelerdeki gibi ekip genelinde paylaşımlı değil. Paylaşımlı hale getirmek istersen ayrıca konuşalım.
+      </div>
+    </div>
+    <div class="flex items-center justify-between px-4 py-3 border-t border-slate-100">
+      <div class="text-[11px] text-slate-400"><span id="candidatePoolCount">0</span> aday kayıtlı <button id="candidateClearAllBtn" type="button" class="ml-2 text-red-500 hover:text-red-700 font-semibold">tümünü sil</button></div>
+      <div class="flex gap-2">
+        <button id="uploadCandidatesCancel" type="button" class="px-3 py-1.5 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100">Kapat</button>
+        <button id="candidateImportBtn" type="button" disabled class="px-3 py-1.5 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white">İçe Aktar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PROJE -> GERÇEK ADAYLAR: TAM EKRAN GÖRÜNÜM -->
+<div id="candidateFullscreenView" class="hidden fixed inset-0 z-[1500] bg-slate-50 flex flex-col">
+  <div class="flex items-center gap-3 px-5 py-3 border-b border-slate-200 bg-white shrink-0">
+    <button id="candidateFsBackBtn" type="button" class="text-slate-500 hover:text-slate-700 text-sm font-semibold whitespace-nowrap">← Haritaya dön</button>
+    <div class="w-px h-6 bg-slate-200"></div>
+    <label class="text-xs font-semibold text-slate-600 shrink-0">Proje</label>
+    <select id="candidateFsProjectSelect" class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 bg-white min-w-[260px]">
+      <option value="">Seçiniz…</option>
+    </select>
+    <div class="flex-1"></div>
+    <span id="candidateFsCount" class="text-xs text-slate-400 whitespace-nowrap"></span>
+    <button id="candidateAiBtn" type="button" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white whitespace-nowrap">🤖 AI'ya Sor</button>
+  </div>
+
+  <div class="flex-1 flex min-h-0">
+    <!-- Sol: aday listesi -->
+    <div class="w-[360px] shrink-0 border-r border-slate-200 bg-white flex flex-col min-h-0">
+      <div class="p-3 border-b border-slate-100 shrink-0 space-y-2">
+        <div class="flex gap-2">
+          <select id="candidateFsYearFilter" class="shrink-0 border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 bg-white">
+            <option value="">Tüm yıllar</option>
+          </select>
+          <input id="candidateFsSearch" type="text" placeholder="İsim/telefon ara ya da doğal dille tarif edin…" class="flex-1 min-w-0 border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700" />
+          <button id="candidateFsAiFilterBtn" type="button" class="shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 whitespace-nowrap">✨ AI Filtre</button>
+        </div>
+        <div id="candidateFsAiFilterStatus" class="flex flex-wrap gap-1.5"></div>
+      </div>
+      <div id="candidateFsList" class="flex-1 overflow-y-auto p-2 space-y-1.5"></div>
+    </div>
+
+    <!-- Sağ: seçili adayın detayı -->
+    <div id="candidateFsDetail" class="flex-1 overflow-y-auto p-6">
+      <div class="text-sm text-slate-400">Detayları görmek için soldan bir aday seçin.</div>
+    </div>
+  </div>
+</div>
+
+<!-- AI'YA SOR MODALI -->
+<div id="candidateAiModal" class="hidden fixed inset-0 bg-black/40 z-[2000] flex items-center justify-center p-6">
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+      <h2 class="text-sm font-bold text-slate-800">🤖 AI'ya Sor — <span id="candidateAiProjectName" class="font-normal text-slate-500"></span></h2>
+      <button id="candidateAiClose" class="text-slate-400 hover:text-slate-600 text-lg leading-none">&times;</button>
+    </div>
+    <p class="text-[11px] text-slate-500 px-4 pt-2 leading-snug">Şu an listelenen adaylar hakkında soru sor — AI sadece bu ekrandaki gerçek verilere bakarak cevap verir, veride olmayanı uydurmaz.</p>
+    <div id="candidateAiLog" class="flex-1 overflow-y-auto px-4 py-3 space-y-2 flex flex-col"></div>
+    <div class="flex gap-2 px-4 py-3 border-t border-slate-100">
+      <input id="candidateAiInput" type="text" placeholder="ör. Kadıköy'e yakın en uygun 3 aday kim?" class="flex-1 min-w-0 border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700" />
+      <button id="candidateAiSend" type="button" class="shrink-0 px-3 py-1.5 rounded-lg text-sm font-semibold bg-violet-600 hover:bg-violet-700 text-white">Sor</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOPLU EŞLEŞTİRME: TAM EKRAN GÖRÜNÜM -->
+<div id="batchMatchView" class="hidden fixed inset-0 z-[1500] bg-slate-50 flex flex-col">
+  <div class="flex items-center gap-3 px-5 py-3 border-b border-slate-200 bg-white shrink-0">
+    <button id="batchMatchBackBtn" type="button" class="text-slate-500 hover:text-slate-700 text-sm font-semibold whitespace-nowrap">← Haritaya dön</button>
+    <div class="w-px h-6 bg-slate-200"></div>
+    <h1 class="text-sm font-bold text-slate-800">Toplu Eşleştirme</h1>
+    <div class="flex-1"></div>
+    <span id="batchMatchStatus" class="text-xs text-slate-400 whitespace-nowrap"></span>
+    <button id="batchMatchRunBtn" type="button" class="px-3 py-1.5 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white whitespace-nowrap">Eşleştir</button>
+  </div>
+
+  <div class="flex-1 flex min-h-0">
+    <!-- Sol: proje seçimi + kontenjan -->
+    <div class="w-[380px] shrink-0 border-r border-slate-200 bg-white flex flex-col min-h-0">
+      <div class="p-3 border-b border-slate-100 shrink-0">
+        <p class="text-xs text-slate-500 leading-snug">Eşleştirmeye dahil edilecek projeleri işaretle, kontenjanlarını belirle (boş = sınırsız). Her aday en fazla bir projeye atanır — en yüksek puanlı eşleşmeler önce yerleştirilir.</p>
+      </div>
+      <div id="batchMatchProjectList" class="flex-1 overflow-y-auto p-2 space-y-1.5"></div>
+    </div>
+
+    <!-- Sağ: sonuçlar -->
+    <div id="batchMatchResults" class="flex-1 overflow-y-auto p-6">
+      <div class="text-sm text-slate-400">Soldan proje(ler) seçip "Eşleştir"e bas.</div>
+    </div>
+  </div>
+</div>
+
+<!-- TOPLU EŞLEŞTİRME SONUÇLARINDA BİR ADAYA TIKLAYINCA AÇILAN PROFİL MODALI -->
+<div id="batchCandidateModal" class="hidden fixed inset-0 bg-black/40 z-[2500] flex items-center justify-center p-6">
+  <div class="bg-white rounded-xl shadow-xl w-full max-w-xl max-h-[85vh] flex flex-col">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 shrink-0">
+      <h2 class="text-sm font-bold text-slate-800">Aday Detayı</h2>
+      <button id="batchCandidateModalClose" class="text-slate-400 hover:text-slate-600 text-lg leading-none">&times;</button>
+    </div>
+    <div id="batchCandidateModalBody" class="flex-1 overflow-y-auto p-5"></div>
+  </div>
+</div>
+
+<script src="data.js?v=5"></script>
+<script src="app.js?v=5"></script>
+<script src="candidates.js?v=1"></script>
 </body>
 </html>
