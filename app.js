@@ -20,7 +20,7 @@
 // Web App olarak deploy edin, çıkan /exec URL'ini aşağıya yapıştırın. Boş
 // kaldığı sürece uygulama sessizce data.js'teki statik listeyle çalışır
 // ("Proje Ekle" ile eklenen projeler sayfa yenilenince kaybolur).
-const SHEET_API_URL = "";
+const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbyKYtvmDKWZrfHkApzbRnDW0k33t-G-WTMx-fre1rkUc713LSZkG2AJMngli0evqGP2/exec";
 const SHEET_CACHE_KEY = "ist_ulasim_sheet_cache_v1";
 
 // Sheet'e başarılı bir yazmadan hemen sonra yerel önbelleği de günceller.
@@ -741,7 +741,7 @@ function buildMinTransfersAlternative(origin, dest, originLabel, destLabel, prim
 // ---------------------------------------------------------------------------
 
 const TransitCache = {
-  KEY: "ist_ulasim_cache_v4", // v4: rota motoru hat-BFS'ten durak düzeyinde graf + Dijkstra'ya geçti (Ankara motoru), eski süre/rota önbelleği geçersiz
+  KEY: "ist_ulasim_cache_v5", // v5: SHEET_API_URL kuruldu, statik data.js artık yalnızca çevrimdışı yedek
   _mem: null,
   _load() {
     if (this._mem) return this._mem;
