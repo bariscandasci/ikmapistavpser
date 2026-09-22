@@ -750,7 +750,7 @@ function renderAiFilterStatus(originalText) {
   }
   candidateFsAiFilterStatus.innerHTML = `
     <span class="inline-flex items-center gap-1.5 text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full px-2.5 py-1">
-      🔎 "${originalText}"
+      🔎 "${escapeHtml(originalText)}"
       <button type="button" id="candidateFsAiFilterClear" class="font-bold hover:text-indigo-900 leading-none">&times;</button>
     </span>`;
   document.getElementById("candidateFsAiFilterClear").addEventListener("click", () => {
@@ -787,8 +787,8 @@ function buildCandidateFsRow(r) {
   row.innerHTML = `
     <div class="flex items-center justify-between gap-2">
       <div class="min-w-0">
-        <div class="text-sm font-semibold text-slate-800 truncate">${r.candidate.fullName || "İsimsiz aday"}</div>
-        <div class="text-xs text-slate-500">${r.candidate.phoneRaw || "-"}${year ? ` · ${year}` : ""}</div>
+        <div class="text-sm font-semibold text-slate-800 truncate">${escapeHtml(r.candidate.fullName || "İsimsiz aday")}</div>
+        <div class="text-xs text-slate-500">${escapeHtml(r.candidate.phoneRaw || "-")}${year ? ` · ${escapeHtml(String(year))}` : ""}</div>
       </div>
       ${
         r.eliminated
@@ -820,7 +820,7 @@ function buildCandidateDetailHtml(r) {
   const headerHtml = `
     <div class="flex items-start justify-between gap-3 mb-4">
       <div>
-        <div class="text-lg font-bold text-slate-800">${c.fullName || "İsimsiz aday"}</div>
+        <div class="text-lg font-bold text-slate-800">${escapeHtml(c.fullName || "İsimsiz aday")}</div>
         ${isStale ? `<div class="text-xs text-amber-600 font-semibold mt-0.5">⚠️ ${staleDays} gündür güncellenmedi — İK, adayla tekrar teyit etmeli</div>` : ""}
       </div>
       ${
@@ -877,12 +877,14 @@ function buildCandidateDetailHtml(r) {
     ["Başvuru Tarihi", c.appliedAt ? new Date(c.appliedAt).toLocaleDateString("tr-TR") : "-"],
     ["Sisteme Yüklenme", c.uploadedAt ? new Date(c.uploadedAt).toLocaleDateString("tr-TR") : "-"],
   ];
+  // Excel'den gelen serbest metin alanları (telefon/adres/deneyim/sertifika/
+  // kaynak) — label'lar sabit metin, değerler escapeHtml'den geçirilir.
   const infoHtml = `<div class="border-t border-slate-100 pt-3">
     ${infoRows
       .map(
         ([label, value]) =>
           `<div class="flex justify-between gap-3 py-1.5 border-b border-slate-100 text-sm">
-            <span class="text-slate-500">${label}</span><span class="font-medium text-slate-800 text-right">${value}</span>
+            <span class="text-slate-500">${label}</span><span class="font-medium text-slate-800 text-right">${escapeHtml(value)}</span>
           </div>`
       )
       .join("")}
@@ -1051,7 +1053,7 @@ function renderCandidateMappingUI(headers) {
   candidateMappingRows.innerHTML = CANDIDATE_FIELDS.map((f) => {
     const guessedIdx = guessColumnForField(f.key, headers);
     const options = [`<option value="-1">— Kullanma —</option>`].concat(
-      headers.map((h, i) => `<option value="${i}" ${i === guessedIdx ? "selected" : ""}>${h || "(sütun " + (i + 1) + ")"}</option>`)
+      headers.map((h, i) => `<option value="${i}" ${i === guessedIdx ? "selected" : ""}>${escapeHtml(h || "(sütun " + (i + 1) + ")")}</option>`)
     );
     return `
       <div class="flex items-center gap-2">
@@ -1204,10 +1206,10 @@ function renderCommentsList(container, comments) {
       (c) => `
       <div class="border-b border-slate-100 py-2">
         <div class="flex items-baseline justify-between gap-2">
-          <span class="text-xs font-semibold text-slate-700">${c.author || "İsimsiz"}</span>
+          <span class="text-xs font-semibold text-slate-700">${escapeHtml(c.author || "İsimsiz")}</span>
           <span class="text-[10px] text-slate-400 whitespace-nowrap">${formatCommentDate(c.createdAt)}</span>
         </div>
-        <div class="text-sm text-slate-600 mt-0.5">${c.text}</div>
+        <div class="text-sm text-slate-600 mt-0.5">${escapeHtml(c.text)}</div>
       </div>`
     )
     .join("");
@@ -1227,7 +1229,7 @@ function renderCommentsSection(candidateId, candidateName) {
   const savedAuthor = getSavedCommentAuthor();
   const formHtml = `
     <div class="mt-3 pt-3 border-t border-slate-100">
-      <input id="commentAuthorInput" type="text" placeholder="Adınız" value="${savedAuthor}" class="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm mb-1.5" />
+      <input id="commentAuthorInput" type="text" placeholder="Adınız" value="${escapeHtml(savedAuthor)}" class="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm mb-1.5" />
       <textarea id="commentTextInput" rows="2" placeholder="Bu aday hakkında bir not ekle…" class="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm resize-none"></textarea>
       <div class="flex items-center justify-between mt-1.5">
         <span id="commentStatus" class="text-[11px] text-slate-400"></span>
@@ -1442,8 +1444,8 @@ function renderBatchMatchProjectList() {
           <div class="flex items-center gap-2 py-1.5">
             <input type="checkbox" class="batch-project-checkbox" data-project-id="${p.id}" />
             <div class="flex-1 min-w-0">
-              <div class="text-xs font-medium text-slate-700 truncate">${p.name}</div>
-              <div class="text-[10px] text-slate-400 truncate">${p.address}</div>
+              <div class="text-xs font-medium text-slate-700 truncate">${escapeHtml(p.name)}</div>
+              <div class="text-[10px] text-slate-400 truncate">${escapeHtml(p.address)}</div>
             </div>
             <input type="number" min="0" placeholder="Sınırsız" data-project-id="${p.id}"
               class="batch-project-capacity w-16 border border-slate-200 rounded-md px-1.5 py-1 text-xs"
@@ -1598,8 +1600,8 @@ function renderBatchMatchResults(assignmentsByProject, unassigned, projects) {
               (r) => `
               <div class="batch-candidate-row flex items-center justify-between gap-2 py-1.5 border-b border-slate-50 last:border-0 cursor-pointer hover:bg-slate-50 rounded-md px-1 -mx-1" data-candidate-id="${r.candidate.id}">
                 <div class="min-w-0">
-                  <div class="text-sm font-medium text-slate-800 truncate">${r.candidate.fullName || "İsimsiz aday"}</div>
-                  <div class="text-xs text-slate-400">${r.candidate.phoneRaw || "-"}</div>
+                  <div class="text-sm font-medium text-slate-800 truncate">${escapeHtml(r.candidate.fullName || "İsimsiz aday")}</div>
+                  <div class="text-xs text-slate-400">${escapeHtml(r.candidate.phoneRaw || "-")}</div>
                 </div>
                 <span class="shrink-0 text-xs font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">${r.total} p</span>
               </div>`
@@ -1610,7 +1612,7 @@ function renderBatchMatchResults(assignmentsByProject, unassigned, projects) {
       return `
         <div class="bg-white border border-slate-200 rounded-lg p-4 mb-4">
           <div class="flex items-baseline justify-between gap-2 mb-2">
-            <div class="text-sm font-bold text-slate-800">${p.name}</div>
+            <div class="text-sm font-bold text-slate-800">${escapeHtml(p.name)}</div>
             <div class="text-xs text-slate-400 whitespace-nowrap">${list.length} / ${capacityLabel}</div>
           </div>
           ${rowsHtml}
@@ -1624,7 +1626,7 @@ function renderBatchMatchResults(assignmentsByProject, unassigned, projects) {
         <div class="text-sm font-bold text-amber-800 mb-2">Yerleştirilemeyen Adaylar (${unassigned.length})</div>
         <p class="text-xs text-amber-700 mb-2 leading-snug">Bu adaylar seçili projelerden en az birine uygundu ama kontenjan dolduğu için başka bir adaya yer açıldı.</p>
         <div class="flex flex-wrap gap-1.5">
-          ${unassigned.map((c) => `<span class="text-xs bg-white border border-amber-200 rounded-full px-2 py-1 text-amber-700">${c.fullName || "İsimsiz aday"}</span>`).join("")}
+          ${unassigned.map((c) => `<span class="text-xs bg-white border border-amber-200 rounded-full px-2 py-1 text-amber-700">${escapeHtml(c.fullName || "İsimsiz aday")}</span>`).join("")}
         </div>
       </div>`
     : "";

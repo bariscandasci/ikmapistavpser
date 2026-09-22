@@ -168,6 +168,23 @@ function haversineKm(a, b) {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
+// Proje adı/adres/yönlendirme gibi alanlar artık paylaşımlı bir Google
+// Sheet'ten geliyor (bkz. SHEET_API_URL) — herhangi bir ekip üyesi (veya
+// "Proje Ekle" formu) bu metni yazabiliyor. innerHTML/bindTooltip'e ÇIĞ
+// GİBİ basılırsa bu, herkesin tarayıcısında çalışan kalıcı (stored) bir XSS
+// açığı olur. Bu yüzden Sheet'ten/kullanıcıdan gelen HER metin, bir HTML
+// şablonuna gömülmeden önce buradan geçirilir. candidates.js (aday adı,
+// yorumlar — yorumlar da aynı Sheet'i kullanıyor) app.js'ten SONRA
+// yüklendiği için bu fonksiyonu aynen kullanır.
+function escapeHtml(value) {
+  return String(value == null ? "" : value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function roundTo5(n) {
   return Math.round(n / 5) * 5;
 }
@@ -1442,7 +1459,7 @@ const projectMarkersById = {};
 function buildProjectMarker(p) {
   const isUrgent = URGENT_PROJECT_IDS.has(p.id);
   const m = L.marker([p.lat, p.lng], { icon: isUrgent ? urgentProjectIcon : projectIcon });
-  m.bindTooltip(`${isUrgent ? "🔴 ACİL — " : ""}${p.name} — ${p.address}`, { direction: "top" });
+  m.bindTooltip(`${isUrgent ? "🔴 ACİL — " : ""}${escapeHtml(p.name)} — ${escapeHtml(p.address)}`, { direction: "top" });
   projectMarkersById[p.id] = m;
   if (!INACTIVE_PROJECT_IDS.has(p.id)) {
     projectCluster.addLayer(m);
@@ -1470,7 +1487,7 @@ function refreshProjectMarkers() {
     const isActive = !INACTIVE_PROJECT_IDS.has(p.id);
     const isUrgent = URGENT_PROJECT_IDS.has(p.id);
     marker.setIcon(isUrgent ? urgentProjectIcon : projectIcon);
-    marker.setTooltipContent(`${isUrgent ? "🔴 ACİL — " : ""}${p.name} — ${p.address}`);
+    marker.setTooltipContent(`${isUrgent ? "🔴 ACİL — " : ""}${escapeHtml(p.name)} — ${escapeHtml(p.address)}`);
     const inCluster = projectCluster.hasLayer(marker);
     if (isActive && !inCluster) {
       projectCluster.addLayer(marker);
@@ -1762,7 +1779,7 @@ function renderNearbyLinesPanel(originId) {
       const used = l.hubStopId
         ? `<span class="nearby-line-used">rotada kullanılabilir</span>`
         : `<span class="nearby-line-unused">bağlantı noktası belirlenemedi</span>`;
-      return `<div class="nearby-line-row"><span>${MODE_ICON[l.mode] || "🚌"} ${label}</span>${used}</div>`;
+      return `<div class="nearby-line-row"><span>${MODE_ICON[l.mode] || "🚌"} ${escapeHtml(label)}</span>${used}</div>`;
     })
     .join("");
   nearbyLinesPanel.classList.remove("hidden");
@@ -1907,17 +1924,17 @@ function renderProjectToOrigin(projectId) {
 function buildResultCard({ title, subtitle, durationMin, transfers, bucket, onClick, highlight, terms, urgent, referral }) {
   const card = document.createElement("button");
   card.className = `result-card ${highlight ? "result-card-active" : ""} ${urgent ? "result-card-urgent" : ""}`;
-  const referralRow = referral ? `<div class="result-card-referral">📌 ${referral}</div>` : "";
+  const referralRow = referral ? `<div class="result-card-referral">📌 ${escapeHtml(referral)}</div>` : "";
   const servisNote = terms && terms.transport === "Servis"
     ? `<div class="result-card-servis-note">🚐 Bu projede firma servisi var — yukarıdaki süre/aktarma toplu taşıma senaryosuna göredir, gerçek servis güzergahı sisteme kayıtlı değil.</div>`
     : "";
-  const genderSpan = terms && terms.gender ? `<span>👤 ${terms.gender}</span>` : "";
+  const genderSpan = terms && terms.gender ? `<span>👤 ${escapeHtml(terms.gender)}</span>` : "";
   const termsRow = terms
     ? `<div class="result-card-terms">
-        <span>💰 ${terms.salary}</span>
-        <span>🍽️ ${terms.meal}</span>
-        <span>🚌 ${terms.transport}</span>
-        <span>⏰ ${terms.shift}</span>
+        <span>💰 ${escapeHtml(terms.salary)}</span>
+        <span>🍽️ ${escapeHtml(terms.meal)}</span>
+        <span>🚌 ${escapeHtml(terms.transport)}</span>
+        <span>⏰ ${escapeHtml(terms.shift)}</span>
         ${genderSpan}
       </div>`
     : "";
@@ -1926,8 +1943,8 @@ function buildResultCard({ title, subtitle, durationMin, transfers, bucket, onCl
     ${urgentBadge}
     <div class="flex items-center justify-between gap-2">
       <div class="min-w-0">
-        <div class="font-semibold text-slate-800 truncate">${title}</div>
-        <div class="text-xs text-slate-500 truncate">${subtitle}</div>
+        <div class="font-semibold text-slate-800 truncate">${escapeHtml(title)}</div>
+        <div class="text-xs text-slate-500 truncate">${escapeHtml(subtitle)}</div>
       </div>
       <div class="flex flex-col items-end shrink-0">
         <span class="duration-badge" style="background:${bucket.color}1a; color:${bucket.color}">~${durationMin} dk</span>
@@ -2043,7 +2060,7 @@ function drawRoute(originCoords, row, bucket, destCoordsOverride) {
     const endA = anchors[i + 1];
     const geometry = geometryOfStep(step);
     const modeColor = MODE_LINE_COLOR[step.mode] || bucket.color;
-    const tooltipText = `${MODE_ICON[step.mode] || ""} ${step.line}`;
+    const tooltipText = `${MODE_ICON[step.mode] || ""} ${escapeHtml(step.line)}`;
 
     const drawSegment = (latlngs, dashed) => {
       const poly = L.polyline(latlngs, {
@@ -2157,7 +2174,7 @@ function renderUrgentModalList() {
       (p) => `
       <label class="urgent-modal-row">
         <input type="checkbox" value="${p.id}" ${URGENT_PROJECT_IDS.has(p.id) ? "checked" : ""} />
-        <span>${p.name} <span class="text-slate-400">— ${p.address}</span></span>
+        <span>${escapeHtml(p.name)} <span class="text-slate-400">— ${escapeHtml(p.address)}</span></span>
       </label>`
     )
     .join("");
@@ -2244,7 +2261,7 @@ function renderInactiveModalList() {
       (p) => `
       <label class="urgent-modal-row">
         <input type="checkbox" value="${p.id}" ${!INACTIVE_PROJECT_IDS.has(p.id) ? "checked" : ""} />
-        <span>${p.name} <span class="text-slate-400">— ${p.address}</span></span>
+        <span>${escapeHtml(p.name)} <span class="text-slate-400">— ${escapeHtml(p.address)}</span></span>
       </label>`
     )
     .join("");
