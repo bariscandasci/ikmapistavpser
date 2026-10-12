@@ -70,6 +70,109 @@ function getCommentsSheet_() {
   return sheet;
 }
 
+// Aday havuzu — "Adaylar" sekmesi. Liste ekipte ortaktır; istemci her
+// kayıt/silme sonrası tüm listeyi replaceCandidates ile yeniden yazar.
+const CANDIDATES_SHEET_NAME = "Adaylar";
+const CANDIDATE_COLUMNS = [
+  "id", "fullName", "phone", "phoneRaw", "addressText",
+  "districtId", "neighborhoodId", "lat", "lng", "coordsSource",
+  "age", "gender", "sectorExperience", "certificates", "source",
+  "appliedAt", "uploadedAt", "retentionUntil", "mergedSources",
+];
+
+function getCandidatesSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(CANDIDATES_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(CANDIDATES_SHEET_NAME);
+    sheet.appendRow(CANDIDATE_COLUMNS);
+  }
+  return sheet;
+}
+
+function cellToString_(value) {
+  if (value == null || value === "") return "";
+  if (Object.prototype.toString.call(value) === "[object Date]") return value.toISOString();
+  return String(value);
+}
+
+function parseStringList_(value) {
+  if (Array.isArray(value)) return value.map(cellToString_).filter(Boolean);
+  const text = cellToString_(value).trim();
+  if (!text) return [];
+  try {
+    const parsed = JSON.parse(text);
+    return Array.isArray(parsed) ? parsed.map(cellToString_).filter(Boolean) : [text];
+  } catch (err) {
+    return [text];
+  }
+}
+
+function candidateToRow_(candidate) {
+  const coords = candidate.coords || {};
+  const listCell = (value) => (Array.isArray(value) && value.length ? JSON.stringify(value) : "");
+  return CANDIDATE_COLUMNS.map((field) => {
+    if (field === "lat") return coords.lat == null || coords.lat === "" ? "" : Number(coords.lat);
+    if (field === "lng") return coords.lng == null || coords.lng === "" ? "" : Number(coords.lng);
+    if (field === "age") return candidate.age == null || candidate.age === "" ? "" : Number(candidate.age);
+    if (field === "sectorExperience" || field === "certificates" || field === "mergedSources") {
+      return listCell(candidate[field]);
+    }
+    return candidate[field] == null ? "" : candidate[field];
+  });
+}
+
+function rowToCandidate_(header, row) {
+  const raw = {};
+  header.forEach((key, i) => {
+    raw[key] = row[i];
+  });
+  const lat = raw.lat === "" || raw.lat == null ? null : Number(raw.lat);
+  const lng = raw.lng === "" || raw.lng == null ? null : Number(raw.lng);
+  const age = raw.age === "" || raw.age == null ? null : Number(raw.age);
+  return {
+    id: cellToString_(raw.id),
+    fullName: cellToString_(raw.fullName),
+    phone: cellToString_(raw.phone),
+    phoneRaw: cellToString_(raw.phoneRaw),
+    addressText: cellToString_(raw.addressText),
+    districtId: cellToString_(raw.districtId) || null,
+    neighborhoodId: cellToString_(raw.neighborhoodId) || null,
+    coords: lat != null && lng != null && !isNaN(lat) && !isNaN(lng) ? { lat: lat, lng: lng } : null,
+    coordsSource: cellToString_(raw.coordsSource) || null,
+    age: age != null && !isNaN(age) ? age : null,
+    gender: cellToString_(raw.gender),
+    sectorExperience: parseStringList_(raw.sectorExperience),
+    certificates: parseStringList_(raw.certificates),
+    source: cellToString_(raw.source),
+    appliedAt: cellToString_(raw.appliedAt) || null,
+    uploadedAt: cellToString_(raw.uploadedAt) || null,
+    retentionUntil: cellToString_(raw.retentionUntil) || null,
+    mergedSources: parseStringList_(raw.mergedSources),
+  };
+}
+
+function readAllCandidates_() {
+  const sheet = getCandidatesSheet_();
+  const values = sheet.getDataRange().getValues();
+  if (values.length < 2) return [];
+  const header = values[0].map((h) => String(h).trim());
+  const idCol = header.indexOf("id");
+  return values.slice(1)
+    .filter((row) => idCol !== -1 && row[idCol])
+    .map((row) => rowToCandidate_(header, row));
+}
+
+function replaceCandidates_(list) {
+  const sheet = getCandidatesSheet_();
+  const width = Math.max(sheet.getLastColumn(), CANDIDATE_COLUMNS.length);
+  const last = sheet.getLastRow();
+  if (last > 1) sheet.getRange(2, 1, last - 1, width).clearContent();
+  const rows = (list || []).filter((c) => c && c.id).map(candidateToRow_);
+  if (rows.length) sheet.getRange(2, 1, rows.length, CANDIDATE_COLUMNS.length).setValues(rows);
+  return rows.length;
+}
+
 function readAllComments_() {
   const sheet = getCommentsSheet_();
   const values = sheet.getDataRange().getValues();
@@ -160,7 +263,8 @@ function doGet(e) {
   ensureLaterAddedColumns_();
   const projects = readAllRows_();
   const comments = readAllComments_();
-  return ContentService.createTextOutput(JSON.stringify({ ok: true, projects, comments }))
+  const candidates = readAllCandidates_();
+  return ContentService.createTextOutput(JSON.stringify({ ok: true, projects, comments, candidates }))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -261,6 +365,11 @@ function doPost(e) {
       if (rowIndex === -1) return jsonError_("proje bulunamadı: " + id);
       sheet.deleteRow(rowIndex);
       return jsonOk_({ id });
+    }
+
+    if (action === "replaceCandidates") {
+      const count = replaceCandidates_(body.candidates || []);
+      return jsonOk_({ count });
     }
 
     if (action === "addComment") {

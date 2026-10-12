@@ -6,12 +6,9 @@
  * app.js'in gerçek graf tabanlı rota motorunu (getTransitEstimate) olduğu
  * gibi kullanır — mesafe/süre hesaplaması burada TEKRAR YAZILMAZ.
  *
- * DEPOLAMA: Şu an yalnızca localStorage (CandidateStore) kullanılıyor — proje
- * verisindeki gibi (Google Sheets) ekip genelinde paylaşımlı DEĞİL, sadece bu
- * tarayıcıda kalıcı. Paylaşımlı hale getirmek istenirse CandidateStore'un
- * _load/_save/upsertBatch metodları bir Apps Script Web App'ine (projelerdeki
- * postToSheet/postBatchUpdate deseniyle aynı) bağlanacak şekilde değiştirilir;
- * geri kalan tüm mantık (dedup, skorlama, UI) aynı kalır.
+ * DEPOLAMA: Aday listesi paylaşımlı Google Sheet'in "Adaylar" sekmesindedir.
+ * localStorage yalnızca sayfa açılışında ve Sheet'e ulaşılamazsa kullanılan
+ * yedektir. Yazma, Code.gs içindeki replaceCandidates eylemiyle olur.
  */
 
 // ---------------------------------------------------------------------------
@@ -19,6 +16,7 @@
 // ---------------------------------------------------------------------------
 
 const CANDIDATE_STORE_KEY = "ist_ulasim_candidates_v1";
+const CANDIDATE_MIGRATED_KEY = "ist_ulasim_candidates_migrated_v1";
 
 /** Telefonu 10 haneli GSM biçimine indirger (0/+90 önekleri atılır) — dedup anahtarı bu. */
 function normalizePhone(raw) {
@@ -104,6 +102,11 @@ const CandidateStore = {
   save() {
     this._save();
   },
+  /** Sheet'ten gelen listeyi yerel yedeğin yerine koyar. Sheet'e tekrar yazmaz. */
+  replaceAll(candidates) {
+    this._mem = Array.isArray(candidates) ? candidates : [];
+    this._save();
+  },
   /** newOnes: buildCandidateFromRow() çıktısı dizisi. Dönüş: {added, merged}. */
   upsertBatch(newOnes) {
     const list = this._load();
@@ -129,6 +132,44 @@ const CandidateStore = {
     this._save();
   },
 };
+
+/** Güncel aday listesini "Adaylar" sekmesine yazar. */
+function syncCandidatesToSheet() {
+  if (typeof postToSheet !== "function" || !SHEET_API_URL) return Promise.resolve();
+  return postToSheet({ action: "replaceCandidates", candidates: CandidateStore.all() });
+}
+
+/**
+ * Sheet kaynağıdır. İlk açılışta Sheet boş ve bu tarayıcıda eski bir liste
+ * varsa o liste bir kez taşınır. Sonraki boş Sheet, kasıtlı "tümünü sil"dir;
+ * eski yerel liste geri yazılmaz.
+ */
+async function reconcileSharedCandidates(remote) {
+  const list = Array.isArray(remote) ? remote : [];
+  let migrated = false;
+  try {
+    migrated = localStorage.getItem(CANDIDATE_MIGRATED_KEY) === "1";
+  } catch {
+    migrated = false;
+  }
+  if (!migrated && list.length === 0 && CandidateStore.all().length > 0) {
+    await syncCandidatesToSheet();
+    try {
+      localStorage.setItem(CANDIDATE_MIGRATED_KEY, "1");
+    } catch {
+      /* yedek bayrağı yazılamazsa bir sonraki açılışta yeniden denenir */
+    }
+    refreshCandidatePoolCount();
+    return;
+  }
+  CandidateStore.replaceAll(list);
+  try {
+    localStorage.setItem(CANDIDATE_MIGRATED_KEY, "1");
+  } catch {
+    /* yerel bayrak olmadan da Sheet listesi kullanılmaya devam eder */
+  }
+  refreshCandidatePoolCount();
+}
 
 // ---------------------------------------------------------------------------
 // 2) EXCEL PARSE + SÜTUN EŞLEME
@@ -333,6 +374,7 @@ function flushCandidateCoordsIfDirty() {
   if (!candidateCoordsDirty) return;
   CandidateStore.save();
   candidateCoordsDirty = false;
+  syncCandidatesToSheet().catch(() => {});
 }
 
 /**
@@ -1011,11 +1053,16 @@ uploadCandidatesModal.addEventListener("click", (e) => {
   if (e.target === uploadCandidatesModal) closeUploadCandidatesModal();
 });
 
-candidateClearAllBtn.addEventListener("click", () => {
+candidateClearAllBtn.addEventListener("click", async () => {
   if (!CandidateStore.all().length) return;
-  if (!confirm(`${CandidateStore.all().length} adayın tamamı silinsin mi? Bu işlem geri alınamaz.`)) return;
+  if (!confirm(`${CandidateStore.all().length} adayın tamamı silinsin mi? Bu işlem Google Sheet'ten de kaldırır.`)) return;
   CandidateStore.clear();
   refreshCandidatePoolCount();
+  try {
+    await syncCandidatesToSheet();
+  } catch (err) {
+    alert("Bu tarayıcıdan silindi ama Google Sheet güncellenemedi.");
+  }
   if (currentMode === "project-to-candidates" && projectSelect.value) runSearch();
 });
 
@@ -1107,7 +1154,7 @@ candidateAiMapBtn.addEventListener("click", async () => {
   }
 });
 
-candidateImportBtn.addEventListener("click", () => {
+candidateImportBtn.addEventListener("click", async () => {
   if (!pendingImport) return;
   const selects = candidateMappingRows.querySelectorAll(".candidate-map-select");
   const mapping = {};
@@ -1127,10 +1174,18 @@ candidateImportBtn.addEventListener("click", () => {
   const { added, merged } = CandidateStore.upsertBatch(parsed);
   refreshCandidatePoolCount();
   resetImportState();
+  let sharedNote = "";
+  try {
+    await syncCandidatesToSheet();
+    sharedNote = " Liste Google Sheet'e yazıldı.";
+  } catch (err) {
+    sharedNote = " Sheet'e yazılamadı; liste şimdilik bu tarayıcıda duruyor.";
+  }
   candidateUploadStatus.textContent =
     `${added} yeni aday eklendi, ${merged} aday mevcut kayıtla tekilleştirildi (birleştirildi).` +
     (skipped > 0 ? ` ${skipped} satır telefon numarası olmadığı için atlandı.` : "") +
-    ` Toplam ${CandidateStore.all().length} aday.`;
+    ` Toplam ${CandidateStore.all().length} aday.` +
+    sharedNote;
 
   if (currentMode === "project-to-candidates" && projectSelect.value) runSearch();
 });
@@ -1138,10 +1193,8 @@ candidateImportBtn.addEventListener("click", () => {
 // ---------------------------------------------------------------------------
 // 7) ADAY YORUMLARI — ekip içi paylaşımlı notlar (Google Apps Script + Sheet)
 // ---------------------------------------------------------------------------
-// Yorumlar telefon bazlı candidate.id'ye göre saklanır — bu sayede aday
-// listesinin kendisi paylaşımlı olmasa bile (bkz. dosya başındaki NOT), aynı
-// telefonla farklı bilgisayarlarda içe aktarılan bir aday üzerindeki yorumlar
-// herkese görünür (aynı ID'ye düşerler).
+// Yorumlar telefon bazlı candidate.id'ye göre saklanır. Aday listesi de aynı
+// Sheet'te durduğu için aynı telefon her bilgisayarda aynı kayda düşer.
 //
 // İstanbul'da yorumlar da projelerle AYNI Apps Script'i (SHEET_API_URL, bkz.
 // Code.gs) kullanır — "Comments" sekmesi aynı Sheet'te. Kontrat:

@@ -2404,6 +2404,10 @@ async function loadLiveProjects() {
       applyLiveProjects(data.projects);
       saveProjectsCache();
     }
+    if (data.ok && Array.isArray(data.candidates) && typeof reconcileSharedCandidates === "function") {
+      await reconcileSharedCandidates(data.candidates);
+      if (currentMode === "project-to-candidates" && projectSelect.value) runSearch();
+    }
   } catch {
     // Sheet'e ulaşılamadı (internet yok, henüz kurulmadı vb.) — statik/önbellek veriyle sessizce devam
   }
