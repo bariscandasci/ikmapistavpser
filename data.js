@@ -32,8 +32,8 @@
  * TEK bir temsili varyant (mevcutsa en düşük varyant numaralı, "ana" örüntü)
  * seçildi — 2128 hat+yön kombinasyonundan 642'sinin GTFS'te hiç aktif seferi
  * yoktu (muhtemelen iptal/mevsimlik), bu yüzden 1486 hatla sonuçlandı.
- * transit_network_geometry.json boş kaldı — bu GTFS feed'i shapes.txt (gerçek
- * güzergah şekli) içermiyor; haritada rotalar düz/kesikli çizgiyle çizilir.
+ * GTFS feed'i shapes.txt içermiyor. Haritada bir hat, binilen duraktan
+ * inilen durağa kadar gerçek durak koordinatlarını izler.
  *
  * Şema, Ankara'daki (ANKARA_DATA) ile birebir aynıdır — bkz. o dosyanın
  * başındaki şema açıklaması.
@@ -164,11 +164,8 @@ const ISTANBUL_DATA = {
     // durağına bağlandı (ör. Bayrampaşa->stop_bayrampasa_maltepe,
     // Esenler->stop_esenler). Raylı/vapur ağından ÇOK uzak kalan ilçeler
     // (Beykoz, Avcılar, Beylikdüzü, Büyükçekmece, Çatalca, Silivri, Şile)
-    // için en yakın GERÇEK İETT otobüs durağı (transit_network.json'dan,
-    // isim+mesafeyle bulundu) kullanıldı — bu duraklar gerçek otobüs
-    // hatlarıyla ağın geri kalanına bağlı olduğu doğrulandı (BFS testi),
-    // ama rayla doğrudan bağlantıları olmadığından süre tahminleri bu
-    // ilçeler için daha kaba olacaktır.
+    // için en yakın gerçek İETT durağı kullanıldı. Süre, o duraktan itibaren
+    // gerçek hat ve aktarmalarla hesaplanır.
 
     // Avrupa yakası
     {
@@ -311,9 +308,8 @@ const ISTANBUL_DATA = {
       ],
     },
     {
-      // Raylı ağdan çok uzak (~20km+) — en yakın GERÇEK İETT durağı kullanıldı,
-      // ama gerçekte Şile'den şehir merkezine ulaşım büyük ölçüde özel/servis
-      // araçlarına dayanır; bu tahmin oldukça kabadır.
+      // En yakın gerçek İETT durağı. Şile hatları şehir ağına aktarmayla bağlı;
+      // süre bu hatların durak sırasından hesaplanır.
       id: "sile", name: "Şile", lat: 41.1750, lng: 29.6130, accessStopId: "iett_284667",
       neighborhoods: [
         { id: "sile_merkez", name: "Şile Merkez", lat: 41.1750, lng: 29.6130, accessStopId: "iett_284667" },

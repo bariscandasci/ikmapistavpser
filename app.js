@@ -632,11 +632,22 @@ function pathToSteps(pathStopIds, edgeAtStop, graph) {
         line: line ? formatLineLabel(line.hatNo, line.name) : "Hat",
         from: fromName,
         to: toName,
+        fromStopId: s.fromStopId,
+        toStopId: s.toStopId,
         verified: line ? line.verified !== false : true,
         lineId: s._lineId,
       };
     }
-    return { mode: "hub", line: "Yürüyüş", from: fromName, to: toName, verified: true, lineId: null };
+    return {
+      mode: "hub",
+      line: "Yürüyüş",
+      from: fromName,
+      to: toName,
+      fromStopId: s.fromStopId,
+      toStopId: s.toStopId,
+      verified: true,
+      lineId: null,
+    };
   });
 }
 
@@ -648,10 +659,16 @@ function addAccessWalkSteps(steps, route, graph, origin, dest, originLabel, dest
   const lastWalkKm = haversineKm({ lat: lastStop.lat, lng: lastStop.lng }, dest.coords);
 
   if (lastWalkKm > WALK_STEP_MIN_KM) {
-    steps.push({ mode: "hub", line: "Yürüyüş", from: lastStop.name, to: destLabel, verified: true, lineId: null });
+    steps.push({
+      mode: "hub", line: "Yürüyüş", from: lastStop.name, to: destLabel,
+      fromStopId: lastStop.id, toStopId: null, verified: true, lineId: null,
+    });
   }
   if (firstWalkKm > WALK_STEP_MIN_KM) {
-    steps.unshift({ mode: "hub", line: "Yürüyüş", from: originLabel, to: firstStop.name, verified: true, lineId: null });
+    steps.unshift({
+      mode: "hub", line: "Yürüyüş", from: originLabel, to: firstStop.name,
+      fromStopId: null, toStopId: firstStop.id, verified: true, lineId: null,
+    });
   }
   return steps;
 }
@@ -2024,6 +2041,25 @@ function drawRoute(originCoords, row, bucket, destCoordsOverride) {
   // Graf motorunun ürettiği adımlardaki otobüs lineId'leri linesById'de değil
   // (transit_network.json'ın kendi id'leri, ör. "iett_line_1") — bu yüzden
   // geometri için ayrıca transitGraph + localTransitGeometry'e de bakılır.
+  // shapes.txt olmadığı için hat şekli durak koordinatlarının sırasıdır.
+  // Binilen duraktan inilen durağa kadar olan parça çizilir; tek bir kuş
+  // uçuşu çizgisi değil.
+  const stopChainGeometry = (lineId, fromStopId, toStopId) => {
+    if (!lineId || !fromStopId || !toStopId || !transitGraph) return null;
+    const line = transitGraph.linesByLocalId.get(lineId);
+    if (!line || !line.stopIds) return null;
+    const i1 = line.stopIds.indexOf(fromStopId);
+    const i2 = line.stopIds.indexOf(toStopId);
+    if (i1 === -1 || i2 === -1 || i1 === i2) return null;
+    const lo = Math.min(i1, i2);
+    const hi = Math.max(i1, i2);
+    const pts = [];
+    for (let i = lo; i <= hi; i++) {
+      const stop = transitGraph.stopsById.get(line.stopIds[i]);
+      if (stop) pts.push([stop.lat, stop.lng]);
+    }
+    return pts.length > 1 ? pts : null;
+  };
   const geometryOfStep = (s) => {
     const line = lineOfStep(s);
     if (line && line.geometry && line.geometry.length > 1) return line.geometry;
@@ -2034,8 +2070,15 @@ function drawRoute(originCoords, row, bucket, destCoordsOverride) {
         const geo = localTransitGeometry[s.lineId];
         if (geo && geo.length > 1) return geo;
       }
+      const chain = stopChainGeometry(s.lineId, s.fromStopId, s.toStopId);
+      if (chain) return chain;
     }
     return null;
+  };
+  const stopCoord = (id) => {
+    if (!id || !transitGraph) return null;
+    const stop = transitGraph.stopsById.get(id);
+    return stop ? { lat: stop.lat, lng: stop.lng } : null;
   };
 
   // Her bacağın başlangıç/bitiş "çapa" koordinatını belirle: ardışık iki
@@ -2043,6 +2086,11 @@ function drawRoute(originCoords, row, bucket, destCoordsOverride) {
   // en yakın olduğu nokta olarak hesaplanır.
   const anchors = [originCoords];
   for (let i = 0; i < steps.length - 1; i++) {
+    const atStop = stopCoord(steps[i].toStopId) || stopCoord(steps[i + 1].fromStopId);
+    if (atStop) {
+      anchors.push(atStop);
+      continue;
+    }
     const gA = geometryOfStep(steps[i]);
     const gB = geometryOfStep(steps[i + 1]);
     if (gA && gB) {
