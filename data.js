@@ -32,8 +32,8 @@
  * TEK bir temsili varyant (mevcutsa en düşük varyant numaralı, "ana" örüntü)
  * seçildi — 2128 hat+yön kombinasyonundan 642'sinin GTFS'te hiç aktif seferi
  * yoktu (muhtemelen iptal/mevsimlik), bu yüzden 1486 hatla sonuçlandı.
- * GTFS feed'i shapes.txt içermiyor. Haritada bir hat, binilen duraktan
- * inilen durağa kadar gerçek durak koordinatlarını izler.
+ * GTFS feed'i shapes.txt içermiyor. Seçili rotada otobüs ve yürüyüş, durak
+ * sırası yol ağına oturtularak çizilir; metro istasyon sırasını izler.
  *
  * Şema, Ankara'daki (ANKARA_DATA) ile birebir aynıdır — bkz. o dosyanın
  * başındaki şema açıklaması.
@@ -735,7 +735,7 @@ const ISTANBUL_DATA = {
     {
       id: "M2", name: "M2: Hacıosman → Yenikapı", mode: "metro", verified: true,
       source: "OpenStreetMap/Overpass API — 2026-09-07",
-      stopIds: ["stop_haciosman", "stop_darussafaka", "stop_ataturk_oto_sanayi", "stop_itu_ayazaga", "stop_sanayi", "stop_4_levent", "stop_levent", "stop_gayrettepe", "stop_sisli", "stop_osmanbey", "stop_taksim", "stop_sishane", "stop_halic", "stop_vezneciler", "stop_yenikapi", "stop_seyrantepe"],
+      stopIds: ["stop_haciosman", "stop_darussafaka", "stop_ataturk_oto_sanayi", "stop_itu_ayazaga", "stop_sanayi", "stop_4_levent", "stop_levent", "stop_gayrettepe", "stop_sisli", "stop_osmanbey", "stop_taksim", "stop_sishane", "stop_halic", "stop_vezneciler", "stop_yenikapi"],
     },
     {
       id: "M6", name: "M6: Boğaziçi Üniversitesi/Hisarüstü → Levent", mode: "metro", verified: true,
@@ -755,7 +755,7 @@ const ISTANBUL_DATA = {
     {
       id: "M7", name: "M7: Mecidiyeköy → Mahmutbey", mode: "metro", verified: true,
       source: "OpenStreetMap/Overpass API — 2026-09-07",
-      stopIds: ["stop_mecidiyekoy", "stop_caglayan", "stop_kagithane", "stop_nurtepe", "stop_alibeykoy", "stop_circir_mahallesi", "stop_veysel_karani_aksemsettin", "stop_yesilpinar", "stop_k_zim_karabekir", "stop_yenimahalle", "stop_karadeniz_mahallesi", "stop_giyimkent_tekstilkent", "stop_oruc_reis_yuzyil", "stop_goztepe_2", "stop_mahmutbey", "stop_yildiz", "stop_fulya"],
+      stopIds: ["stop_fulya", "stop_yildiz", "stop_mecidiyekoy", "stop_caglayan", "stop_kagithane", "stop_nurtepe", "stop_alibeykoy", "stop_circir_mahallesi", "stop_veysel_karani_aksemsettin", "stop_yesilpinar", "stop_k_zim_karabekir", "stop_yenimahalle", "stop_karadeniz_mahallesi", "stop_giyimkent_tekstilkent", "stop_oruc_reis_yuzyil", "stop_goztepe_2", "stop_mahmutbey"],
     },
     {
       id: "T5", name: "T5: Alibeyköy Cep Otogarı → Eminönü", mode: "tramvay", verified: true,
