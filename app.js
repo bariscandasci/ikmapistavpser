@@ -16,8 +16,8 @@
 // İstanbul Sheet'i bağlı. Proje ekleme, silme, acil işaretleme ve aç/kapa
 // buraya yazılır; sayfa her açıldığında aynı listeyi buradan okur.
 // data.js yalnızca Sheet'e ulaşılamazsa kullanılan çevrimdışı yedektir.
-const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbyKYtvmDKWZrfHkApzbRnDW0k33t-G-WTMx-fre1rkUc713LSZkG2AJMngli0evqGP2/exec";
-const SHEET_CACHE_KEY = "ist_ulasim_sheet_cache_v1";
+const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbxj6m9Kv2J0I2lFJJjP6XUVc3-04pO0TS2CriInYaW3Yp9j3NS0j9_eKq7juOokbNPI/exec";
+const SHEET_CACHE_KEY = "ist_ulasim_sheet_cache_v2";
 
 // Sheet'e başarılı bir yazmadan hemen sonra yerel önbelleği de günceller.
 // Bunu atlarsak, kullanıcı bir projeyi aç/kapat edip kaydettikten sonra
