@@ -207,6 +207,12 @@ function roundTo5(n) {
 
 const MODE_SPEED_KMH = { otobus: 16, metrobus: 38, metro: 33, tramvay: 20, funikuler: 15, marmaray: 40, vapur: 25 };
 const WALK_SPEED_KMH = 4.5;
+// Kuş uçuşu, kaldırımı takip etmez. İstanbul sokak dokusunda gerçek yürüyüş
+// yaklaşık 1.25 kat daha uzundur; süre buna göre hesaplanır.
+const WALK_CIRCUITY = 1.25;
+// Arama maliyeti. OpenTripPlanner'daki walkReluctance gibi: aynı sürede otobüs
+// duruyorsa uzun yürüyüş seçilmez. Gösterilen süre bu çarpanı İÇERMEZ.
+const WALK_RELUCTANCE = 1.8;
 const STOP_DWELL_MIN = 0.4;
 // Her araca binişte (ilk biniş DAHİL, sadece aktarmalarda değil) o modun
 // ortalama sefer sıklığının yarısı kadar bekleme süresi eklenir — gerçekte
@@ -219,13 +225,14 @@ function avgWaitMin(mode) {
   return (MODE_HEADWAY_MIN[mode] !== undefined ? MODE_HEADWAY_MIN[mode] : MODE_HEADWAY_MIN.otobus) / 2;
 }
 const WALK_TRANSFER_MAX_KM = 0.35; // farklı hatların yakın duraklarını "aktarma" olarak bağlayan yürüme kenarları
-const NEAREST_STOP_SEARCH_KM = 2.0; // bir nokta çevresinde graf'a giriş/çıkış için aranan yarıçap
+// Google Maps'in tercih ettiği yürüme: durağa ~10-12 dk. Daha yakını varken
+// 1 km'den uzağa yürünmez.
+const COMFORTABLE_ACCESS_KM = 0.85;
+const NEAREST_STOP_SEARCH_KM = 1.2; // bir nokta çevresinde graf'a giriş/çıkış için aranan yarıçap
 const NEAREST_STOP_MAX_CANDIDATES = 10;
-// Şehrin kenarındaki bir nokta (ör. İstanbul Havalimanı'ndaki proje, en yakın
-// durağa 2.02km) NEAREST_STOP_SEARCH_KM içinde hiç durak bulamayınca doğrudan
-// "doğrulanamadı" tahminine düşmesin: yarıçap içinde SIFIR durak varsa bu daha
-// geniş yarıçapla tekrar aranır. Yürüme süresi gerçek mesafeyle hesaplandığı
-// için (2km ≈ 27 dk) sonuç yine dürüst — sadece ağın dışında kalmıyor.
+// Şehrin kenarındaki bir nokta (ör. İstanbul Havalimanı) yakın yarıçapta hiç
+// durak bulamayınca "doğrulanamadı"ya düşmesin. Bu geniş yarıçap YALNIZCA
+// yakın çevrede sıfır durak varsa kullanılır.
 const NEAREST_STOP_FALLBACK_KM = 3.0;
 // İstanbul'da bir noktanın 300m çevresinde onlarca otobüs durağı olabilir; en
 // yakın 10 durak SADECE otobüs duraklarıyla dolarsa 600-800m'deki bir
@@ -245,7 +252,19 @@ const GRID_CELL_DEG = 0.006; // ~500-650m'lik ızgara hücresi (İstanbul enlemi
 const UNRELIABLE_COORD_SOURCES = new Set(["enterpolasyon", "ekstrapolasyon"]);
 
 function walkMinutes(km) {
-  return (km / WALK_SPEED_KMH) * 60;
+  return (km * WALK_CIRCUITY / WALK_SPEED_KMH) * 60;
+}
+
+// Dijkstra sıralaması için. Kullanıcıya gösterilen süre walkMinutes'tır.
+function walkSearchMinutes(km) {
+  return walkMinutes(km) * WALK_RELUCTANCE;
+}
+
+function formatWalkDistance(km) {
+  const minutes = Math.max(1, Math.round(walkMinutes(km)));
+  const meters = Math.round(km * WALK_CIRCUITY * 1000);
+  const dist = meters < 1000 ? `${meters} m` : `${(meters / 1000).toFixed(1).replace(".", ",")} km`;
+  return `≈ ${dist} · ${minutes} dk yürüyüş`;
 }
 
 function gridCellKey(lat, lng) {
@@ -398,15 +417,26 @@ function stopsWithinRadius(graph, lat, lng, radiusKm, requireReliableCoord) {
  * NEAREST_RAIL_EXTRA_CANDIDATES raylı/deniz durağı (bkz. o sabitin notu).
  */
 function accessCandidates(graph, coords) {
-  let all = stopsWithinRadius(graph, coords.lat, coords.lng, NEAREST_STOP_SEARCH_KM, true);
-  if (all.length === 0) all = stopsWithinRadius(graph, coords.lat, coords.lng, NEAREST_STOP_FALLBACK_KM, true);
-  const picked = all.slice(0, NEAREST_STOP_MAX_CANDIDATES);
+  let wide = stopsWithinRadius(graph, coords.lat, coords.lng, NEAREST_STOP_SEARCH_KM, true);
+  let usedFallback = false;
+  if (wide.length === 0) {
+    wide = stopsWithinRadius(graph, coords.lat, coords.lng, NEAREST_STOP_FALLBACK_KM, true);
+    usedFallback = true;
+  }
+  // Yakın durak varken 1 km ötedeki metroya yürütmeyiz. Hiç yakın durak yoksa
+  // (havalimanı gibi) bulunan en yakın duraklar kullanılır.
+  const comfortable = usedFallback ? wide : wide.filter((s) => s.km <= COMFORTABLE_ACCESS_KM);
+  const pool = comfortable.length ? comfortable : wide;
+  const picked = pool.slice(0, NEAREST_STOP_MAX_CANDIDATES);
+  const pickedIds = new Set(picked.map((p) => p.stop.id));
   let extra = 0;
-  for (let i = NEAREST_STOP_MAX_CANDIDATES; i < all.length && extra < NEAREST_RAIL_EXTRA_CANDIDATES; i++) {
-    if (all[i].stop.rail) {
-      picked.push(all[i]);
-      extra += 1;
-    }
+  for (let i = 0; i < wide.length && extra < NEAREST_RAIL_EXTRA_CANDIDATES; i++) {
+    const item = wide[i];
+    if (!item.stop.rail || pickedIds.has(item.stop.id)) continue;
+    if (!usedFallback && comfortable.length && item.km > COMFORTABLE_ACCESS_KM) break;
+    picked.push(item);
+    pickedIds.add(item.stop.id);
+    extra += 1;
   }
   return picked;
 }
@@ -449,14 +479,15 @@ function runDijkstra(graph, sources, transferPenaltyMin = 0) {
     }
   }
 
-  sources.forEach(({ stopId, startMinutes }) => {
+  sources.forEach(({ stopId, startMinutes, startRealMinutes }) => {
     const key = stopId + "|" + NONE;
+    const real0 = startRealMinutes == null ? startMinutes : startRealMinutes;
     if (!dist.has(key) || dist.get(key) > startMinutes) {
       dist.set(key, startMinutes);
-      realDist.set(key, startMinutes);
+      realDist.set(key, real0);
       keyStopId.set(key, stopId);
       heap.push({ stopId, lineKey: NONE, minutes: startMinutes });
-      relaxBestAtStop(stopId, key, startMinutes, startMinutes);
+      relaxBestAtStop(stopId, key, startMinutes, real0);
     }
   });
 
@@ -484,7 +515,9 @@ function runDijkstra(graph, sources, transferPenaltyMin = 0) {
         newLineKey = NONE;
       }
       const penalty = boarding ? transferPenaltyMin : 0;
-      const newMinutes = cur.minutes + e.minutes + waitCost + penalty;
+      // Yürüme kenarının arama maliyeti reluctance ile büyür; gerçek süre büyümez.
+      const edgeSearch = e.lineId ? e.minutes : e.minutes * WALK_RELUCTANCE;
+      const newMinutes = cur.minutes + edgeSearch + waitCost + penalty;
       const newRealMinutes = curRealMinutes + e.minutes + waitCost;
       const newKey = e.to + "|" + newLineKey;
       const known = dist.get(newKey);
@@ -523,7 +556,8 @@ function getDijkstraFrom(coords, graph = transitGraph, transferPenaltyMin = 0) {
   if (cached && cached.key === key) return cached.result;
   const sources = accessCandidates(graph, coords).map(({ stop, km }) => ({
     stopId: stop.id,
-    startMinutes: walkMinutes(km),
+    startMinutes: walkSearchMinutes(km),
+    startRealMinutes: walkMinutes(km),
   }));
   const result = runDijkstra(graph, sources, transferPenaltyMin);
   variants.set(variant, { key, result });
@@ -559,10 +593,10 @@ function findRealRoute(originCoords, destCoords, graph = transitGraph, fixedSide
   toCandidates.forEach(({ stop, km }) => {
     const d = bestAtStop.get(stop.id);
     if (d === undefined) return;
-    const walk = walkMinutes(km);
-    const total = d + walk; // sıralama için kullanılan (cezalı olabilir) toplam
+    const walkReal = walkMinutes(km);
+    const total = d + walkSearchMinutes(km); // sıralama: yürüyüş reluctance'ı dahil, aktarma cezası varsa o da
     if (!best || total < best.total) {
-      best = { total, stopId: stop.id, realTotal: bestRealMinutesAtStop.get(stop.id) + walk };
+      best = { total, stopId: stop.id, realTotal: bestRealMinutesAtStop.get(stop.id) + walkReal };
     }
   });
   if (!best) return null;
@@ -617,14 +651,23 @@ function pathToSteps(pathStopIds, edgeAtStop, graph) {
     const last = merged[merged.length - 1];
     if (last && last._lineId === e.lineId) {
       last.toStopId = e.to;
+      last._pointIds.push(e.to);
     } else {
-      merged.push({ _lineId: e.lineId, mode: e.mode, fromStopId: e.from, toStopId: e.to });
+      merged.push({ _lineId: e.lineId, mode: e.mode, fromStopId: e.from, toStopId: e.to, _pointIds: [e.from, e.to] });
     }
   });
 
+  const pointsOf = (ids) => ids.map((id) => {
+    const stop = graph.stopsById.get(id);
+    return stop ? [stop.lat, stop.lng] : null;
+  }).filter(Boolean);
+
   return merged.map((s) => {
-    const fromName = graph.stopsById.get(s.fromStopId).name;
-    const toName = graph.stopsById.get(s.toStopId).name;
+    const fromStop = graph.stopsById.get(s.fromStopId);
+    const toStop = graph.stopsById.get(s.toStopId);
+    const fromName = fromStop.name;
+    const toName = toStop.name;
+    const points = pointsOf(s._pointIds);
     if (s._lineId) {
       const line = graph.linesByLocalId.get(s._lineId);
       return {
@@ -634,10 +677,12 @@ function pathToSteps(pathStopIds, edgeAtStop, graph) {
         to: toName,
         fromStopId: s.fromStopId,
         toStopId: s.toStopId,
+        points,
         verified: line ? line.verified !== false : true,
         lineId: s._lineId,
       };
     }
+    const walkKm = haversineKm({ lat: fromStop.lat, lng: fromStop.lng }, { lat: toStop.lat, lng: toStop.lng });
     return {
       mode: "hub",
       line: "Yürüyüş",
@@ -645,6 +690,8 @@ function pathToSteps(pathStopIds, edgeAtStop, graph) {
       to: toName,
       fromStopId: s.fromStopId,
       toStopId: s.toStopId,
+      points,
+      walkLabel: formatWalkDistance(walkKm),
       verified: true,
       lineId: null,
     };
@@ -661,13 +708,19 @@ function addAccessWalkSteps(steps, route, graph, origin, dest, originLabel, dest
   if (lastWalkKm > WALK_STEP_MIN_KM) {
     steps.push({
       mode: "hub", line: "Yürüyüş", from: lastStop.name, to: destLabel,
-      fromStopId: lastStop.id, toStopId: null, verified: true, lineId: null,
+      fromStopId: lastStop.id, toStopId: null,
+      points: [[lastStop.lat, lastStop.lng], [dest.coords.lat, dest.coords.lng]],
+      walkLabel: formatWalkDistance(lastWalkKm),
+      verified: true, lineId: null,
     });
   }
   if (firstWalkKm > WALK_STEP_MIN_KM) {
     steps.unshift({
       mode: "hub", line: "Yürüyüş", from: originLabel, to: firstStop.name,
-      fromStopId: null, toStopId: firstStop.id, verified: true, lineId: null,
+      fromStopId: null, toStopId: firstStop.id,
+      points: [[origin.coords.lat, origin.coords.lng], [firstStop.lat, firstStop.lng]],
+      walkLabel: formatWalkDistance(firstWalkKm),
+      verified: true, lineId: null,
     });
   }
   return steps;
@@ -771,7 +824,7 @@ function buildMinTransfersAlternative(origin, dest, originLabel, destLabel, prim
 // ---------------------------------------------------------------------------
 
 const TransitCache = {
-  KEY: "ist_ulasim_cache_v5", // v5: SHEET_API_URL kuruldu, statik data.js artık yalnızca çevrimdışı yedek
+  KEY: "ist_ulasim_cache_v6", // v6: yürüyüş mesafesi sokak çarpanı + reluctance; eski süreler geçersiz
   _mem: null,
   _load() {
     if (this._mem) return this._mem;
@@ -1389,7 +1442,8 @@ function renderRouteSteps(steps) {
             <span class="route-step-icon">${icon}</span>
             <div class="route-step-body">
               <div class="route-step-line">${s.line}</div>
-              <div class="route-step-stops">${s.from} / ${s.to} — yürüme mesafesinde</div>
+              <div class="route-step-stops">${escapeHtml(s.from)} → ${escapeHtml(s.to)}</div>
+              <div class="route-step-stops">${escapeHtml(s.walkLabel || "yürüme mesafesinde")}</div>
             </div>
           </div>`;
       }
@@ -2025,14 +2079,78 @@ function interpolateCoords(a, b, t) {
 // dümdüz bir çizgi gerçek rota gibi katı çizilip yanıltıyordu.
 const REAL_GEOMETRY_CONNECT_LIMIT_KM = 0.15;
 
+// Otobüs ve yürüyüş, seçili rota çizilirken yol ağına oturtulur (OSRM).
+// Metro/tramvay/Marmaray rayı yol değildir; durak sırası olarak kalır.
+// Demo sunucusu yanıt vermezse durak sırası çizilmeye devam eder.
+let routeDrawSerial = 0;
+const roadSnapCache = new Map();
+
+function chainLengthKm(latlngs) {
+  let km = 0;
+  for (let i = 1; i < latlngs.length; i++) {
+    km += haversineKm(
+      { lat: latlngs[i - 1][0], lng: latlngs[i - 1][1] },
+      { lat: latlngs[i][0], lng: latlngs[i][1] }
+    );
+  }
+  return km;
+}
+
+function downsampleLatLngs(latlngs, maxPts) {
+  if (latlngs.length <= maxPts) return latlngs.slice();
+  const out = [latlngs[0]];
+  const step = (latlngs.length - 1) / (maxPts - 1);
+  for (let i = 1; i < maxPts - 1; i++) out.push(latlngs[Math.round(i * step)]);
+  out.push(latlngs[latlngs.length - 1]);
+  return out;
+}
+
+function roadSnapProfile(step) {
+  if (!step.lineId || step.mode === "hub" || step.mode === "yurume") return "foot";
+  if (step.mode === "otobus" || step.mode === "metrobus") return "driving";
+  return null;
+}
+
+function acceptRoadGeometry(profile, latlngs, distanceM) {
+  const hav = chainLengthKm(latlngs);
+  if (hav < 0.04) return false;
+  const ratio = distanceM / 1000 / hav;
+  // Yaya grafı kaldırım eksikken 3-4 kat dolanıyor; o halkayı çizme.
+  // 2 kat: normal sokak dolanması. 3-4 kat, bariyer yüzünden anlamsız yaya halkasıdır.
+  if (profile === "foot") return ratio >= 0.8 && ratio <= 2.4;
+  return ratio >= 0.8 && ratio <= 1.55;
+}
+
+function fetchRoadGeometry(profile, latlngs) {
+  const pts = downsampleLatLngs(latlngs, 50);
+  const key = profile + ":" + pts.map((p) => `${p[0].toFixed(4)},${p[1].toFixed(4)}`).join(";");
+  if (roadSnapCache.has(key)) return Promise.resolve(roadSnapCache.get(key));
+  const coords = pts.map((p) => `${p[1].toFixed(5)},${p[0].toFixed(5)}`).join(";");
+  const url = `https://router.project-osrm.org/route/v1/${profile}/${coords}?overview=full&geometries=geojson`;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  return fetch(url, { signal: ctrl.signal })
+    .then((res) => (res.ok ? res.json() : null))
+    .then((data) => {
+      const route = data && data.routes && data.routes[0];
+      if (!route || !route.geometry || !route.geometry.coordinates) return null;
+      if (!acceptRoadGeometry(profile, latlngs, route.distance)) return null;
+      const snapped = route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+      roadSnapCache.set(key, snapped);
+      return snapped;
+    })
+    .catch(() => null)
+    .finally(() => clearTimeout(timer));
+}
+
 /**
- * Rotayı, mümkün olduğunca hatların OSM'den alınan gerçek geometrisini
- * (yol/ray şeklini) takip ederek çizer. Her bacak kendi rengiyle/gerçek
- * güzergahıyla ayrı bir segment olarak çizilir; gerçek geometrisi olmayan
- * (canlı keşfedilmiş ya da TAHMİNİ) hatlar için düz kesikli çizgiye döner.
+ * Rotayı, binilen durakların sırasını takip ederek çizer. Otobüs ve yürüyüş
+ * seçili rotada yol ağına oturtulur; metro kendi istasyon sırasıyla, beyaz
+ * bordürlü bir hat olarak çizilir.
  */
 function drawRoute(originCoords, row, bucket, destCoordsOverride) {
   routesLayer.clearLayers();
+  const serial = ++routeDrawSerial;
   const destCoords = destCoordsOverride || { lat: row.project.lat, lng: row.project.lng };
   const steps = row.steps || [];
   if (steps.length === 0) return;
@@ -2061,6 +2179,9 @@ function drawRoute(originCoords, row, bucket, destCoordsOverride) {
     return pts.length > 1 ? pts : null;
   };
   const geometryOfStep = (s) => {
+    // Gerçekten geçilen duraklar. Hattın iki uç arasındaki TÜM indeks aralığı
+    // değil — aksi halde hat listesi karışıksa çizgi şehrin öbür ucuna zıplıyor.
+    if (s.points && s.points.length > 1) return s.points;
     const line = lineOfStep(s);
     if (line && line.geometry && line.geometry.length > 1) return line.geometry;
     if (s.lineId && transitGraph && transitGraph.linesByLocalId.has(s.lineId)) {
@@ -2075,6 +2196,7 @@ function drawRoute(originCoords, row, bucket, destCoordsOverride) {
     }
     return null;
   };
+  const isWalkStep = (s) => !s.lineId || s.mode === "hub" || s.mode === "yurume";
   const stopCoord = (id) => {
     if (!id || !transitGraph) return null;
     const stop = transitGraph.stopsById.get(id);
@@ -2102,63 +2224,85 @@ function drawRoute(originCoords, row, bucket, destCoordsOverride) {
   anchors.push(destCoords);
 
   const allPoints = [];
+  const snapJobs = [];
   steps.forEach((step, i) => {
     const startA = anchors[i];
     const endA = anchors[i + 1];
     const geometry = geometryOfStep(step);
+    const walked = isWalkStep(step);
+    const hasExactPoints = step.points && step.points.length > 1;
     const modeColor = MODE_LINE_COLOR[step.mode] || bucket.color;
     const tooltipText = `${MODE_ICON[step.mode] || ""} ${escapeHtml(step.line)}`;
 
     const drawSegment = (latlngs, dashed) => {
+      const layers = [];
+      if (!dashed) {
+        layers.push(L.polyline(latlngs, {
+          color: "#ffffff",
+          weight: 7,
+          opacity: 0.92,
+          lineJoin: "round",
+          lineCap: "round",
+        }).addTo(routesLayer));
+      }
       const poly = L.polyline(latlngs, {
         color: modeColor,
-        weight: dashed ? 3 : 5,
-        opacity: dashed ? 0.6 : 0.9,
-        dashArray: dashed ? "2 8" : null,
+        weight: dashed ? 3 : 4,
+        opacity: dashed ? 0.85 : 0.95,
+        dashArray: dashed ? "1 7" : null,
         lineJoin: "round",
         lineCap: "round",
       }).addTo(routesLayer);
       poly.bindTooltip(tooltipText, { sticky: true });
+      layers.push(poly);
       allPoints.push(...latlngs);
+      return layers;
     };
 
-    if (geometry) {
+    let seg = null;
+    if (hasExactPoints) {
+      seg = step.points.map(([lat, lng]) => [lat, lng]);
+    } else if (geometry) {
       const i1 = nearestPointIndex(geometry, startA);
       const i2 = nearestPointIndex(geometry, endA);
       const lo = Math.min(i1, i2);
       const hi = Math.max(i1, i2);
-      const seg = geometry.slice(lo, hi + 1).map(([lat, lng]) => [lat, lng]);
-
-      if (seg.length > 1) {
-        const segStart = { lat: seg[0][0], lng: seg[0][1] };
-        const segEnd = { lat: seg[seg.length - 1][0], lng: seg[seg.length - 1][1] };
-        const startIsNearSegStart = haversineKm(startA, segStart) <= haversineKm(startA, segEnd);
-        const nearStart = startIsNearSegStart ? segStart : segEnd;
-        const nearEnd = startIsNearSegStart ? segEnd : segStart;
-
-        // Gerçek güzergah her zaman katı çizgiyle çizilir.
-        drawSegment(seg, false);
-        // Gerçek hat, bacağın asıl uçlarına (durak/proje konumu) tam ulaşmıyorsa
-        // aradaki fark ince kesikli bir "son adım" çizgisiyle tamamlanır.
-        if (haversineKm(startA, nearStart) > REAL_GEOMETRY_CONNECT_LIMIT_KM) {
-          drawSegment([[startA.lat, startA.lng], [nearStart.lat, nearStart.lng]], true);
-        }
-        if (haversineKm(endA, nearEnd) > REAL_GEOMETRY_CONNECT_LIMIT_KM) {
-          drawSegment([[nearEnd.lat, nearEnd.lng], [endA.lat, endA.lng]], true);
-        }
-      } else {
-        // Gerçek geometri bu bacak için kullanılamadı (uçlar hattın tamamen
-        // aynı noktasına denk düştü) — dürüstçe kesikli/tahmini göster.
-        drawSegment([[startA.lat, startA.lng], [endA.lat, endA.lng]], true);
-      }
-    } else {
-      drawSegment([[startA.lat, startA.lng], [endA.lat, endA.lng]], true);
+      const sliced = geometry.slice(lo, hi + 1).map(([lat, lng]) => [lat, lng]);
+      if (sliced.length > 1) seg = sliced;
     }
+    if (!seg) {
+      drawSegment([[startA.lat, startA.lng], [endA.lat, endA.lng]], true);
+      return;
+    }
+
+    const layers = drawSegment(seg, walked);
+    if (!hasExactPoints) {
+      const segStart = { lat: seg[0][0], lng: seg[0][1] };
+      const segEnd = { lat: seg[seg.length - 1][0], lng: seg[seg.length - 1][1] };
+      const startIsNearSegStart = haversineKm(startA, segStart) <= haversineKm(startA, segEnd);
+      const nearStart = startIsNearSegStart ? segStart : segEnd;
+      const nearEnd = startIsNearSegStart ? segEnd : segStart;
+      if (haversineKm(startA, nearStart) > REAL_GEOMETRY_CONNECT_LIMIT_KM) {
+        drawSegment([[startA.lat, startA.lng], [nearStart.lat, nearStart.lng]], true);
+      }
+      if (haversineKm(endA, nearEnd) > REAL_GEOMETRY_CONNECT_LIMIT_KM) {
+        drawSegment([[nearEnd.lat, nearEnd.lng], [endA.lat, endA.lng]], true);
+      }
+    }
+    const profile = roadSnapProfile(step);
+    if (profile) snapJobs.push({ layers, profile, latlngs: seg });
   });
 
   if (allPoints.length) {
     map.fitBounds(L.latLngBounds(allPoints), { padding: [70, 70], animate: true, duration: 0.8 });
   }
+
+  snapJobs.forEach(({ layers, profile, latlngs }) => {
+    fetchRoadGeometry(profile, latlngs).then((snapped) => {
+      if (serial !== routeDrawSerial || !snapped || snapped.length < 2) return;
+      layers.forEach((layer) => layer.setLatLngs(snapped));
+    });
+  });
 }
 
 // showRouteResult'a en son verilen estimate — "En Hızlı"/"En Az Aktarmalı"
