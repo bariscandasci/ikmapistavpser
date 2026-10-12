@@ -13,13 +13,9 @@
 // listeyi görür ve "Proje Ekle"/"Acil"/"Aç-Kapa" değişiklikleri herkese
 // yansır. data.js'teki liste yalnızca ilk yükleme anında (Sheet'e henüz
 // ulaşılamadıysa) çevrimdışı bir yedek olarak kullanılır.
-// ⚠️ İSTANBUL İÇİN HENÜZ KURULMADI. Ankara'daki Apps Script URL'i buraya
-// KOPYALANMAMALI — o URL Ankara'nın kendi Google Sheet'ine yazıyor, aynı
-// anda İstanbul'un projelerini de oraya karıştırır. İstanbul için: Ankara'daki
-// Sheet + Apps Script'in bir kopyasını (Dosya > Kopya Oluştur) yapıp yeni bir
-// Web App olarak deploy edin, çıkan /exec URL'ini aşağıya yapıştırın. Boş
-// kaldığı sürece uygulama sessizce data.js'teki statik listeyle çalışır
-// ("Proje Ekle" ile eklenen projeler sayfa yenilenince kaybolur).
+// İstanbul Sheet'i bağlı. Proje ekleme, silme, acil işaretleme ve aç/kapa
+// buraya yazılır; sayfa her açıldığında aynı listeyi buradan okur.
+// data.js yalnızca Sheet'e ulaşılamazsa kullanılan çevrimdışı yedektir.
 const SHEET_API_URL = "https://script.google.com/macros/s/AKfycbyKYtvmDKWZrfHkApzbRnDW0k33t-G-WTMx-fre1rkUc713LSZkG2AJMngli0evqGP2/exec";
 const SHEET_CACHE_KEY = "ist_ulasim_sheet_cache_v1";
 
@@ -1585,7 +1581,10 @@ function rebuildProjectSelect() {
       projectSelect.appendChild(optGroup);
     });
 
-  if (previouslySelected && !INACTIVE_PROJECT_IDS.has(previouslySelected)) {
+  if (
+    previouslySelected &&
+    ISTANBUL_DATA.projects.some((p) => p.id === previouslySelected && !INACTIVE_PROJECT_IDS.has(p.id))
+  ) {
     projectSelect.value = previouslySelected;
   }
 }
@@ -2259,10 +2258,13 @@ function renderInactiveModalList() {
   inactiveModalList.innerHTML = sorted
     .map(
       (p) => `
-      <label class="urgent-modal-row">
-        <input type="checkbox" value="${p.id}" ${!INACTIVE_PROJECT_IDS.has(p.id) ? "checked" : ""} />
-        <span>${escapeHtml(p.name)} <span class="text-slate-400">— ${escapeHtml(p.address)}</span></span>
-      </label>`
+      <div class="urgent-modal-row">
+        <label class="flex flex-1 items-start gap-2 min-w-0">
+          <input type="checkbox" value="${p.id}" ${!INACTIVE_PROJECT_IDS.has(p.id) ? "checked" : ""} />
+          <span>${escapeHtml(p.name)} <span class="text-slate-400">— ${escapeHtml(p.address)}</span></span>
+        </label>
+        <button type="button" data-remove-project="${escapeHtml(p.id)}" class="shrink-0 text-[11px] font-bold text-red-600 hover:text-red-800">Sil</button>
+      </div>`
     )
     .join("");
 }
@@ -2276,6 +2278,26 @@ function closeInactiveModal() {
 }
 
 inactiveBtn.addEventListener("click", openInactiveModal);
+inactiveModalList.addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-remove-project]");
+  if (!btn) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const id = btn.dataset.removeProject;
+  const project = ISTANBUL_DATA.projects.find((p) => p.id === id);
+  if (!project) return;
+  if (!confirm(`"${project.name}" kalıcı olarak silinsin mi? Google Sheet'ten de kalkar.`)) return;
+  btn.disabled = true;
+  try {
+    await postToSheet({ action: "remove", id });
+    applyLiveProjects(ISTANBUL_DATA.projects.filter((p) => p.id !== id));
+    saveProjectsCache();
+    renderInactiveModalList();
+  } catch (err) {
+    alert("Silinemedi — internet bağlantısını kontrol edip tekrar dene.");
+    btn.disabled = false;
+  }
+});
 inactiveModalClose.addEventListener("click", closeInactiveModal);
 inactiveModalCancel.addEventListener("click", closeInactiveModal);
 inactiveModal.addEventListener("click", (e) => {
@@ -2359,7 +2381,7 @@ async function loadLiveProjects() {
   if (!SHEET_API_URL) return;
   try {
     const cached = JSON.parse(localStorage.getItem(SHEET_CACHE_KEY) || "null");
-    if (Array.isArray(cached) && cached.length) {
+    if (Array.isArray(cached)) {
       applyLiveProjects(cached);
     }
   } catch {
@@ -2368,7 +2390,7 @@ async function loadLiveProjects() {
   try {
     const res = await fetch(SHEET_API_URL);
     const data = await res.json();
-    if (data.ok && Array.isArray(data.projects) && data.projects.length) {
+    if (data.ok && Array.isArray(data.projects)) {
       applyLiveProjects(data.projects);
       saveProjectsCache();
     }
