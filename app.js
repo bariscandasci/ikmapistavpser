@@ -2290,13 +2290,23 @@ inactiveModalList.addEventListener("click", async (e) => {
   btn.disabled = true;
   try {
     await postToSheet({ action: "remove", id });
-    applyLiveProjects(ISTANBUL_DATA.projects.filter((p) => p.id !== id));
-    saveProjectsCache();
-    renderInactiveModalList();
   } catch (err) {
     alert("Silinemedi — internet bağlantısını kontrol edip tekrar dene.");
     btn.disabled = false;
+    return;
   }
+  const idx = ISTANBUL_DATA.projects.findIndex((p) => p.id === id);
+  if (idx !== -1) ISTANBUL_DATA.projects.splice(idx, 1);
+  const marker = projectMarkersById[id];
+  if (marker) {
+    if (projectCluster.hasLayer(marker)) projectCluster.removeLayer(marker);
+    delete projectMarkersById[id];
+  }
+  recomputeUrgentInactiveSets();
+  rebuildProjectSelect();
+  saveProjectsCache();
+  renderInactiveModalList();
+  if (originSelect.value || projectSelect.value) runSearch();
 });
 inactiveModalClose.addEventListener("click", closeInactiveModal);
 inactiveModalCancel.addEventListener("click", closeInactiveModal);
