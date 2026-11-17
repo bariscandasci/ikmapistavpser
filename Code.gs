@@ -1,17 +1,9 @@
 /**
- * İstanbul Ulaşım & Proje Eşleştirme Modülü — paylaşımlı proje veritabanı + aday yorumları + AI.
- * Ankara'daki (ikmaps) Code.gs'in İSTANBUL İÇİN AYRI bir kopyası — kendi
- * Google Sheet'ine yazar, Ankara'nınkine dokunmaz.
- *
- * Kurulum: bu dosyayı, İstanbul için oluşturulan (Ankara'dan bağımsız) yeni
- * bir Google Sheet'te Uzantılar > Apps Script menüsünden açılan editöre
- * YAPIŞTIR, "seedIfEmpty" fonksiyonunu bir kez çalıştır (16 projeyi yazar),
- * sonra Dağıt > Yeni Dağıtım > Web Uygulaması (Execute as: Me, Who has
- * access: Anyone) ile yayınla. Çıkan /exec URL'ini ikmaps-istanbul/app.js'teki
- * SHEET_API_URL'e yapıştır (aday yorumları ve AI de aynı URL'i kullanır).
- * AI özellikleri için ayrıca Script Özellikleri'ne GEMINI_API_KEY ekle
- * (bkz. callGemini_). Sonraki kod güncellemelerinde "Dağıtımları yönet" ile
- * mevcut dağıtımın YENİ SÜRÜMÜNÜ yayınla (URL değişmez).
+ * İK Ulaşım & Proje Eşleştirme Modülü — paylaşımlı proje veritabanı + aday yorumları.
+ * Bu dosyayı, "Projeler" (ve "Comments") sayfalarını içeren Google Sheet'te
+ * Uzantılar > Apps Script menüsünden açılan editöre YAPIŞTIR,
+ * sonra "Dağıt > Dağıtımları yönet" ile mevcut dağıtımın YENİ SÜRÜMÜNÜ yayınla
+ * (URL değişmez, sadece kod güncellenir).
  */
 
 const SHEET_NAME = "Projeler";
@@ -48,15 +40,8 @@ function ensureLaterAddedColumns_() {
 const COMMENTS_SHEET_NAME = "Comments";
 const COMMENT_FIELDS = ["candidateId", "candidateName", "author", "text", "createdAt"];
 
-/** "Projeler" sekmesi yoksa (ör. ilk kurulum) başlık satırıyla birlikte oluşturur. */
 function getSheet_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(SHEET_NAME);
-  if (!sheet) {
-    sheet = ss.insertSheet(SHEET_NAME);
-    sheet.appendRow(FIELDS);
-  }
-  return sheet;
+  return SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
 }
 
 /** "Comments" sekmesi yoksa (ör. ilk kurulum) başlık satırıyla birlikte oluşturur. */
@@ -68,109 +53,6 @@ function getCommentsSheet_() {
     sheet.appendRow(COMMENT_FIELDS);
   }
   return sheet;
-}
-
-// Aday havuzu — "Adaylar" sekmesi. Liste ekipte ortaktır; istemci her
-// kayıt/silme sonrası tüm listeyi replaceCandidates ile yeniden yazar.
-const CANDIDATES_SHEET_NAME = "Adaylar";
-const CANDIDATE_COLUMNS = [
-  "id", "fullName", "phone", "phoneRaw", "addressText",
-  "districtId", "neighborhoodId", "lat", "lng", "coordsSource",
-  "age", "gender", "sectorExperience", "certificates", "source",
-  "appliedAt", "uploadedAt", "retentionUntil", "mergedSources",
-];
-
-function getCandidatesSheet_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(CANDIDATES_SHEET_NAME);
-  if (!sheet) {
-    sheet = ss.insertSheet(CANDIDATES_SHEET_NAME);
-    sheet.appendRow(CANDIDATE_COLUMNS);
-  }
-  return sheet;
-}
-
-function cellToString_(value) {
-  if (value == null || value === "") return "";
-  if (Object.prototype.toString.call(value) === "[object Date]") return value.toISOString();
-  return String(value);
-}
-
-function parseStringList_(value) {
-  if (Array.isArray(value)) return value.map(cellToString_).filter(Boolean);
-  const text = cellToString_(value).trim();
-  if (!text) return [];
-  try {
-    const parsed = JSON.parse(text);
-    return Array.isArray(parsed) ? parsed.map(cellToString_).filter(Boolean) : [text];
-  } catch (err) {
-    return [text];
-  }
-}
-
-function candidateToRow_(candidate) {
-  const coords = candidate.coords || {};
-  const listCell = (value) => (Array.isArray(value) && value.length ? JSON.stringify(value) : "");
-  return CANDIDATE_COLUMNS.map((field) => {
-    if (field === "lat") return coords.lat == null || coords.lat === "" ? "" : Number(coords.lat);
-    if (field === "lng") return coords.lng == null || coords.lng === "" ? "" : Number(coords.lng);
-    if (field === "age") return candidate.age == null || candidate.age === "" ? "" : Number(candidate.age);
-    if (field === "sectorExperience" || field === "certificates" || field === "mergedSources") {
-      return listCell(candidate[field]);
-    }
-    return candidate[field] == null ? "" : candidate[field];
-  });
-}
-
-function rowToCandidate_(header, row) {
-  const raw = {};
-  header.forEach((key, i) => {
-    raw[key] = row[i];
-  });
-  const lat = raw.lat === "" || raw.lat == null ? null : Number(raw.lat);
-  const lng = raw.lng === "" || raw.lng == null ? null : Number(raw.lng);
-  const age = raw.age === "" || raw.age == null ? null : Number(raw.age);
-  return {
-    id: cellToString_(raw.id),
-    fullName: cellToString_(raw.fullName),
-    phone: cellToString_(raw.phone),
-    phoneRaw: cellToString_(raw.phoneRaw),
-    addressText: cellToString_(raw.addressText),
-    districtId: cellToString_(raw.districtId) || null,
-    neighborhoodId: cellToString_(raw.neighborhoodId) || null,
-    coords: lat != null && lng != null && !isNaN(lat) && !isNaN(lng) ? { lat: lat, lng: lng } : null,
-    coordsSource: cellToString_(raw.coordsSource) || null,
-    age: age != null && !isNaN(age) ? age : null,
-    gender: cellToString_(raw.gender),
-    sectorExperience: parseStringList_(raw.sectorExperience),
-    certificates: parseStringList_(raw.certificates),
-    source: cellToString_(raw.source),
-    appliedAt: cellToString_(raw.appliedAt) || null,
-    uploadedAt: cellToString_(raw.uploadedAt) || null,
-    retentionUntil: cellToString_(raw.retentionUntil) || null,
-    mergedSources: parseStringList_(raw.mergedSources),
-  };
-}
-
-function readAllCandidates_() {
-  const sheet = getCandidatesSheet_();
-  const values = sheet.getDataRange().getValues();
-  if (values.length < 2) return [];
-  const header = values[0].map((h) => String(h).trim());
-  const idCol = header.indexOf("id");
-  return values.slice(1)
-    .filter((row) => idCol !== -1 && row[idCol])
-    .map((row) => rowToCandidate_(header, row));
-}
-
-function replaceCandidates_(list) {
-  const sheet = getCandidatesSheet_();
-  const width = Math.max(sheet.getLastColumn(), CANDIDATE_COLUMNS.length);
-  const last = sheet.getLastRow();
-  if (last > 1) sheet.getRange(2, 1, last - 1, width).clearContent();
-  const rows = (list || []).filter((c) => c && c.id).map(candidateToRow_);
-  if (rows.length) sheet.getRange(2, 1, rows.length, CANDIDATE_COLUMNS.length).setValues(rows);
-  return rows.length;
 }
 
 function readAllComments_() {
@@ -224,47 +106,11 @@ function findRowIndexById_(id) {
   return -1;
 }
 
-/**
- * Tek seferlik kurulum yardımcısı: "Projeler" sekmesi tamamen boşsa (henüz
- * hiç satır eklenmemişse) data.js'teki 16 gerçek projeyi Sheet'e yazar.
- * Apps Script editöründe Çalıştır menüsünden manuel tetiklenir. Sheet'te
- * zaten veri varsa hiçbir şey yapmadan çıkar — güvenle tekrar çalıştırılabilir.
- */
-function seedIfEmpty() {
-  const sheet = getSheet_();
-  if (sheet.getLastRow() > 1) return; // zaten veri var, dokunma
-  const rows = [
-    ["proj_bezmialem_hastanesi_vatan_tem_hiz", "Bezmialem Hastanesi Vatan Tem. Hiz.", "Temizlik", "Topkapı, Fatih", 41.018829, 28.935077, "stop_capa_sehremini", "07.30-17.30", "28.000₺", "Yemekhane", "Servis", "Projeye yönlendirilecek — Operasyon: Kemal Çalış / İK: Mustafa Kerem As", "Kadın/Erkek", false, true],
-    ["proj_calik_holding_temizlik_hizmeti", "Çalık Holding Temizlik Hizmeti", "Temizlik", "Esentepe, Zincirlikuyu", 41.071161, 29.015096, "stop_gayrettepe", "08.00-17.30", "29.000₺", "550₺", "3.628₺", "Projeye yönlendirilecek — Operasyon: Feridun Aksu / İK: Haşim Berkay Aslıhak", "Erkek", false, true],
-    ["proj_havas_istanbul_havalimani_tem_hiz", "Havaş İstanbul Havalimanı Tem. Hiz.", "Temizlik", "Tayakadın, Arnavutköy", 41.276148, 28.728735, "stop_istanbul_havalimani", "08.00-17.00/16.00-24.00", "34.000₺", "Yemekhane", "Servis", "Telefon görüşmesi — Operasyon: Feridun Aksu / İK: Ahmet Berat İmamoğlu", "Erkek", false, true],
-    ["proj_haribo_temizlik_hizmeti", "Haribo Temizlik Hizmeti", "Temizlik", "Ömerli, Arnavutköy", 41.124429, 28.633433, "stop_tasoluk", "08:00-17:00 / 16:00-24:00", "34.000₺", "Yemekhane", "Servis", "Telefon görüşmesi — Operasyon: Rıdvan Altuntaş / İK: Ali Remzi Adar", "Erkek", false, true],
-    ["proj_kuzey_marmara_santiye_tem_hiz", "Kuzey Marmara Şantiye Tem. Hiz.", "Temizlik", "Sazlıdere, Başakşehir", 41.105915, 28.718574, "stop_kayasehir", "08:00-17:00", "30.000₺", "Yemekhane", "Servis", "Telefon görüşmesi — Operasyon: Kemal Çalış / İK: Ahmet Berat İmamoğlu", "Erkek", false, true],
-    ["proj_kadir_has_uni_cibali_ana_kampus_tem_hiz", "Kadir Has Üni. Cibali Ana Kampüs Tem. Hiz.", "Temizlik", "Cibali, Fatih", 41.024951, 28.958974, "stop_cibali", "07:00-16:00 / 07:00-17:00", "30.000₺", "330₺", "Multinet", "Projeye yönlendirilecek — Operasyon: Kemal Çalış / İK: Haşim Berkay Aslıhak", "Erkek", false, true],
-    ["proj_enka_okullari_istinye_temizlik_hiz", "Enka Okulları İstinye Temizlik Hiz.", "Temizlik", "İstinye, Sarıyer", 41.113932, 29.035994, "stop_ataturk_oto_sanayi", "07:30-16:00 / 10:30-19:00", "34.000₺", "Yemekhane", "3.628₺", "Projeye yönlendirilecek — Operasyon: Kemal Çalış / İK: Ece Uğurlu", "Kadın/Erkek", false, true],
-    ["proj_adidas_capacity", "Adidas Capacity", "Temizlik", "Ataköy, Bakırköy", 40.977701, 28.871391, "stop_bakirkoy", "09:45-11:45", "14.170₺", "-", "-", "Telefon görüşmesi — Operasyon: Feridun Aksu / İK: Aybars Zeki", "Kadın", false, true],
-    ["proj_adidas_cevahir", "Adidas Cevahir", "Temizlik", "Büyükdere, Şişli", 41.062036, 28.992982, "stop_sisli", "09:45-11:45", "14.170₺", "-", "-", "Telefon görüşmesi — Operasyon: Feridun Aksu / İK: Aybars Zeki", "Kadın", false, true],
-    ["proj_gap_tarlabasi", "Gap Tarlabaşı", "Temizlik", "Tarlabaşı, Beyoğlu", 41.03668, 28.980336, "stop_huseyin_aga_camii", "07.00-17.00", "29.400₺", "550₺", "3.628₺", "Projeye yönlendirilecek — Operasyon: Feridun Aksu / İK: Haşim Berkay Aslıhak", "Erkek", false, true],
-    ["proj_halic_universitesi_temizlik_hizmeti", "Haliç Üniversitesi Temizlik Hizmeti", "Temizlik", "5.Levent, Alibeyköy", 41.085852, 28.952187, "stop_alibeykoy", "08.30-17.30", "32.500₺", "Yemekhane", "3.628₺", "Projeye yönlendirilecek — Operasyon: Kemal Çalış / İK: Ece Uğurlu", "Erkek", false, true],
-    ["proj_halic_universitesi_temizlik_hizmeti_2", "Haliç Üniversitesi Temizlik Hizmeti", "Temizlik", "5.Levent, Alibeyköy", 41.085852, 28.952187, "stop_alibeykoy", "08.00-17.00", "32.500₺", "Yemekhane", "3.628₺", "Projeye yönlendirilecek — Operasyon: Kemal Çalış / İK: Ece Uğurlu", "Kadın", false, true],
-    ["proj_pamir_gida", "Pamir Gıda (Haribo) Temizlik Hizm.", "Temizlik", "Ömerli, Arnavutköy", 41.124429, 28.633433, "stop_tasoluk", "07:00-15:00 / 15:00-23:00 / 23:00-07:00", "42.500₺", "Yemekhane", "Servis", "Projeye yönlendirilecek — Operasyon: Rıdvan Altuntaş / İK: Ahmet Berat İmamoğlu", "Erkek", false, true],
-    ["proj_bilgili_holding", "Bilgili Holding / Akaretler Beşiktaş", "Temizlik", "Akaretler, Beşiktaş", 41.043146, 29.002455, "stop_besiktas_iskele", "07.00-15.00 / 13.00-21.00", "34.900₺", "8.690₺", "3.628₺", "Projeye yönlendirilecek — Operasyon: Feridun Aksu / İK: Ece Uğurlu", "Erkek", false, true],
-    ["proj_aras_kargo_ikitelli", "Aras Kargo İkitelli", "Temizlik", "İkitelli, Başakşehir", 41.095215, 28.80037, "stop_siteler", "08.00-17.30", "35.000₺", "8.300₺", "3.628₺", "Telefon görüşmesi — Operasyon: Rıdvan Altuntaş / İK: Ali Remzi Adar", "Erkek", false, true],
-    ["proj_metro_properties_beylikduzu_avm_tem_hiz", "Metro Properties - Beylikdüzü AVM Tem. Hiz.", "Temizlik", "Çelebi Mehmet Cd. (E5 Yan Yol), Esenyurt", 41.009287, 28.660097, "stop_halkali", "08:00-15:00 / 15:00-22:00", "28.000₺", "10.000₺", "3.567₺ Multinet", "Telefon görüşmesi — Operasyon: Rıdvan Altuntaş / İK: Ali Remzi Adar", "Erkek", false, true],
-  ];
-  // Seed satırları eski (kontenjan/pozisyon öncesi) sütun düzeninde; sondaki iki
-  // sütunu (capacity, position) burada ekliyoruz. Pozisyonlar kaynak Excel'in
-  // unvan sütunundan (TEMİZLİK ELEMANI/PERSONELİ -> Temizlik Görevlisi, BAHÇIVAN).
-  const POSITION_BY_ID = { proj_halic_universitesi_temizlik_hizmeti: "Bahçıvan" };
-  const full = rows.map((r) => r.concat(["", POSITION_BY_ID[r[0]] || "Temizlik Görevlisi"]));
-  sheet.getRange(2, 1, full.length, FIELDS.length).setValues(full);
-}
-
 function doGet(e) {
   ensureLaterAddedColumns_();
   const projects = readAllRows_();
   const comments = readAllComments_();
-  const candidates = readAllCandidates_();
-  return ContentService.createTextOutput(JSON.stringify({ ok: true, projects, comments, candidates }))
+  return ContentService.createTextOutput(JSON.stringify({ ok: true, projects, comments }))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -365,11 +211,6 @@ function doPost(e) {
       if (rowIndex === -1) return jsonError_("proje bulunamadı: " + id);
       sheet.deleteRow(rowIndex);
       return jsonOk_({ id });
-    }
-
-    if (action === "replaceCandidates") {
-      const count = replaceCandidates_(body.candidates || []);
-      return jsonOk_({ count });
     }
 
     if (action === "addComment") {
